@@ -1,0 +1,771 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>スタッフ用トラッカー (モックアップ)</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --primary: #0ea5e9;
+            --primary-dark: #0284c7;
+            --danger: #ef4444;
+            --danger-dark: #dc2626;
+            --success: #10b981;
+            --bg-body: #f8fafc;
+            --bg-card: #ffffff;
+            --text-main: #1e293b;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', 'Noto Sans JP', sans-serif;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            background-color: var(--bg-body);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background-color: var(--primary);
+            color: white;
+            padding: 16px;
+            text-align: center;
+            font-size: 1.2rem;
+            font-weight: 600;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        main {
+            flex: 1;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            max-width: 600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            border: 1px solid var(--border);
+            text-align: center;
+        }
+
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.95rem;
+            margin-bottom: 24px;
+            background-color: #f1f5f9;
+            color: var(--text-muted);
+        }
+
+        .status-badge.active {
+            background-color: #ecfdf5;
+            color: var(--success);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: currentColor;
+        }
+
+        .status-badge.active .status-dot {
+            animation: pulse 1.5s infinite;
+        }
+
+        .btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            border: none;
+            border-radius: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .btn:active {
+            transform: scale(0.98);
+        }
+
+        .btn-start {
+            background-color: var(--primary);
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+        }
+        
+        .btn-start:hover { background-color: var(--primary-dark); }
+
+        .btn-stop {
+            background-color: var(--danger);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+            display: none;
+        }
+
+        .btn-stop:hover { background-color: var(--danger-dark); }
+
+        .data-display {
+            text-align: left;
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+        }
+
+        .data-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 0.95rem;
+        }
+
+        .data-label { color: var(--text-muted); }
+        .data-value { font-weight: 500; font-family: monospace; }
+
+        .log-container {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 16px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.05);
+            border: 1px solid var(--border);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            max-height: 400px;
+        }
+
+        .log-title {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 12px;
+            color: var(--text-main);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .log-list {
+            list-style: none;
+            overflow-y: auto;
+            flex: 1;
+            font-size: 0.85rem;
+            font-family: monospace;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .log-item {
+            padding: 8px 12px;
+            border-radius: 8px;
+            background-color: #f8fafc;
+            border-left: 3px solid var(--border);
+            animation: slideIn 0.3s ease;
+        }
+
+        .log-item.success { border-left-color: var(--success); }
+        .log-item.error { border-left-color: var(--danger); background-color: #fef2f2; }
+        
+        .log-time { color: var(--text-muted); margin-bottom: 4px; font-size: 0.75rem;}
+
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4); }
+            70% { box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+        }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(-10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        /* 許可アラート用 */
+        #permission-alert {
+            display: none;
+            background-color: #fffbeb;
+            color: #b45309;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #fde68a;
+            margin-top: 16px;
+            font-size: 0.9rem;
+            text-align: left;
+        }
+
+        /* 施設チェックリスト用モーダル */
+        .facility-modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); display: none;
+            justify-content: center; align-items: flex-end; z-index: 1000;
+        }
+        .facility-modal-content {
+            background: white; width: 100%; max-width: 600px;
+            border-radius: 20px 20px 0 0; padding: 32px 24px;
+            box-shadow: 0 -5px 25px rgba(0,0,0,0.1);
+            animation: slideUp 0.3s ease; text-align: left;
+        }
+        @keyframes slideUp {
+            from { transform: translateY(100%); }
+            to { transform: translateY(0); }
+        }
+        .patient-list {
+            margin: 16px 0; border: 1px solid var(--border); border-radius: 12px; overflow: hidden;
+        }
+        .patient-item {
+            border-bottom: 1px solid var(--border); transition: background 0.2s;
+            display: flex; flex-direction: column;
+        }
+        .patient-header {
+            padding: 16px; display: flex; align-items: center; gap: 14px; cursor: pointer;
+        }
+        .patient-item:last-child { border-bottom: none; }
+        .patient-item:hover .patient-header { background: #f8fafc; }
+        .patient-item input[type="checkbox"] { width: 22px; height: 22px; accent-color: var(--primary); cursor: pointer; }
+        .patient-name { font-weight: 600; font-size: 1.05rem; }
+        .patient-room { font-size: 0.85rem; color: var(--text-muted); }
+
+        /* 特記事項・訓練記録エリア */
+        .patient-options {
+            display: none;
+            padding: 12px 16px; margin: 0 16px 16px 16px;
+            background: #f1f5f9; border-radius: 8px; border: 1px solid var(--border);
+        }
+        .patient-item.expanded .patient-options {
+            display: block;
+            animation: slideDown 0.2s ease;
+        }
+        @keyframes slideDown {
+            from { opacity: 0; transform: translateY(-5px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .radio-group {
+            display: flex; gap: 16px; margin-top: 8px; margin-bottom: 12px; flex-wrap: wrap;
+        }
+        .radio-group label {
+            display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 0.9rem;
+        }
+        .reason-input {
+            width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
+            font-size: 0.85rem; box-sizing: border-box; display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        📱 往診トラッカー (スタッフ用)
+    </header>
+
+    <main>
+        <div class="card">
+            <div id="status-badge" class="status-badge">
+                <div class="status-dot"></div>
+                <span>待機中</span>
+            </div>
+
+            <button id="btn-start" class="btn btn-start">トラッキング開始</button>
+            <button id="btn-stop" class="btn btn-stop">トラッキング停止</button>
+
+            <!-- ジオフェンスの自動検知シミュレーション機能 -->
+            <button id="btn-sim-travel" class="btn" style="background-color: #8b5cf6; color: white; display: none; margin-top: 16px; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);">
+                🚗 自動検知シミュレーション開始
+            </button>
+
+            <!-- 手動の施設検知デモボタン -->
+            <div id="facility-trigger-container" style="display: none; margin-top: 16px;">
+                <button id="btn-detect-facility" class="btn" style="background-color: var(--success); color: white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+                    📍 【手動】到着検知
+                </button>
+            </div>
+
+            <div id="permission-alert">
+                ℹ️ 位置情報の利用許可が必要です。ブラウザのポップアップが出たら「許可」を選択してください。
+            </div>
+
+            <div class="data-display" id="data-display" style="display: none;">
+                <div class="data-row">
+                    <span class="data-label">緯度 (Lat):</span>
+                    <span class="data-value" id="val-lat">---.------</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">経度 (Lng):</span>
+                    <span class="data-value" id="val-lng">---.------</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">精度 (Acc):</span>
+                    <span class="data-value" id="val-acc">--- m</span>
+                </div>
+                <div class="data-row">
+                    <span class="data-label">最終取得:</span>
+                    <span class="data-value" id="val-time">--:--:--</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="log-container">
+            <div class="log-title">
+                通信ログ (模擬)
+            </div>
+            <ul class="log-list" id="log-list">
+                <!-- ログがここに追加されます -->
+                <li class="log-item" style="color: var(--text-muted); text-align: center; border:none; background:none;">待機中...</li>
+            </ul>
+        </div>
+    </main>
+
+    <!-- 施設連携（チェックリスト）モーダル -->
+    <div class="facility-modal-overlay" id="facility-modal">
+        <div class="facility-modal-content">
+            <h3 style="margin-bottom: 8px; font-size: 1.2rem; color: var(--text-main);">📍 さくら老人ホーム</h3>
+            <p style="color: var(--text-muted); font-size: 0.95rem;">【特別設定施設】患者のチェックと歩行訓練記録をお願いします。</p>
+            
+            <div class="patient-list">
+                <!-- JSで施設ごとに動的に患者が追加されます -->
+            </div>
+            
+            <button id="btn-save-patients" class="btn btn-start" style="margin-top: 16px;">📝 日報データに記録して完了</button>
+            <button id="btn-close-facility" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 8px; box-shadow: none;">キャンセル</button>
+        </div>
+    </div>
+
+    <script>
+        const btnStart = document.getElementById('btn-start');
+        const btnStop = document.getElementById('btn-stop');
+        const statusBadge = document.getElementById('status-badge');
+        const permissionAlert = document.getElementById('permission-alert');
+        const dataDisplay = document.getElementById('data-display');
+        const logList = document.getElementById('log-list');
+
+        // 施設モーダル用要素
+        const triggerContainer = document.getElementById('facility-trigger-container');
+        const btnDetectFacility = document.getElementById('btn-detect-facility');
+        const facilityModal = document.getElementById('facility-modal');
+        const btnSavePatients = document.getElementById('btn-save-patients');
+        const btnCloseFacility = document.getElementById('btn-close-facility');
+
+        let watchId = null;
+        let isTracking = false;
+
+        // 本番用施設マスタデータ (サーバーから動的に取得)
+        let FACILITIES_DATA = [];
+
+        // サーバーから施設・患者データを取得
+        const loadFacilities = async () => {
+            try {
+                const response = await fetch('/api/facilities');
+                const result = await response.json();
+                if (result.success) {
+                    FACILITIES_DATA = result.data;
+                    console.log('✅ 施設データをサーバーから読み込みました:', FACILITIES_DATA);
+                    if (FACILITIES_DATA.length === 0) {
+                        addLog('⚠️ 施設データがありません。ダッシュボードから登録してください。', 'error');
+                    }
+                }
+            } catch (error) {
+                console.error('施設データの取得に失敗しました:', error);
+                // initial UI log text could be overwritten here if there's an error
+            }
+        };
+        
+        // ページ読み込み時に施設データを取得
+        window.addEventListener('DOMContentLoaded', loadFacilities);
+
+        let currentFacilityName = '';
+
+        // ログを追加する関数
+        const addLog = (message, type = 'success') => {
+            // 初期の「待機中...」を削除
+            if (logList.children.length === 1 && logList.children[0].style.textAlign === 'center') {
+                logList.innerHTML = '';
+            }
+
+            const li = document.createElement('li');
+            li.className = `log-item ${type}`;
+            
+            const now = new Date();
+            const timeStr = now.toLocaleTimeString('ja-JP') + '.' + now.getMilliseconds().toString().padStart(3, '0');
+            
+            li.innerHTML = `
+                <div class="log-time">${timeStr}</div>
+                <div>${message}</div>
+            `;
+            
+            // 先頭に追加
+            logList.insertBefore(li, logList.firstChild);
+
+            // ログが50件を超えたら古いものを削除
+            if (logList.children.length > 50) {
+                logList.lastChild.remove();
+            }
+        };
+
+        // トラッキング開始ボタン
+        btnStart.addEventListener('click', () => {
+            if (!("geolocation" in navigator)) {
+                addLog("エラー: このブラウザは位置情報に対応していません。", "error");
+                return;
+            }
+
+            permissionAlert.style.display = 'block';
+            addLog("位置情報の取得を開始しています...", "success");
+
+            // 位置情報の監視を開始 (5秒ごとに取得を試みる設定など)
+            const options = {
+                enableHighAccuracy: true, // 高精度（GPS推奨）
+                timeout: 10000,           // タイムアウト10秒
+                maximumAge: 0             // キャッシュを使わず常に最新を取得
+            };
+
+            watchId = navigator.geolocation.watchPosition(
+                successCallback,
+                errorCallback,
+                options
+            );
+
+            // UI状態の更新
+            isTracking = true;
+            btnStart.style.display = 'none';
+            btnStop.style.display = 'block';
+            statusBadge.classList.add('active');
+            statusBadge.querySelector('span').innerText = 'トラッキング中';
+            permissionAlert.style.display = 'none';
+            dataDisplay.style.display = 'block';
+            
+            // 施設デモボタンを表示
+            triggerContainer.style.display = 'block';
+            document.getElementById('btn-sim-travel').style.display = 'block';
+        });
+
+        // トラッキング停止ボタン
+        btnStop.addEventListener('click', () => {
+            if (watchId !== null) {
+                navigator.geolocation.clearWatch(watchId);
+                watchId = null;
+            }
+
+            isTracking = false;
+            btnStop.style.display = 'none';
+            btnStart.style.display = 'block';
+            statusBadge.classList.remove('active');
+            statusBadge.querySelector('span').innerText = '待機中';
+            triggerContainer.style.display = 'none';
+            document.getElementById('btn-sim-travel').style.display = 'none';
+            
+            if (window.simInterval) {
+                clearInterval(window.simInterval);
+                window.simInterval = null;
+            }
+
+            addLog("トラッキングを停止しました。", "success");
+        });
+
+        // ==================================
+        // 施設チェックリスト処理
+        // ==================================
+        btnDetectFacility.addEventListener('click', () => {
+            if (FACILITIES_DATA.length > 0) {
+                openFacilityModal(FACILITIES_DATA[0]); // 手動デモ用は最初の施設を強制表示
+            } else {
+                alert('施設データがありません。サーバーに接続できているか、データが登録されているか確認してください。');
+            }
+        });
+
+        btnCloseFacility.addEventListener('click', () => {
+            facilityModal.style.display = 'none';
+        });
+
+        const attachPatientItemEvents = () => {
+            // チェックボックスの状態変更時にオプションエリアを開閉
+            document.querySelectorAll('.patient-checkbox').forEach(cb => {
+                cb.addEventListener('change', (e) => {
+                    const container = e.target.closest('.patient-item');
+                    if (e.target.checked) {
+                        container.classList.add('expanded');
+                    } else {
+                        container.classList.remove('expanded');
+                    }
+                });
+            });
+
+            // 「拒否」が選ばれた時のみ理由入力欄を表示
+            document.querySelectorAll('input[type="radio"]').forEach(radio => {
+                radio.addEventListener('change', (e) => {
+                    const group = e.target.closest('.radio-group');
+                    const reasonInput = group.nextElementSibling;
+                    if (e.target.value === '拒否') {
+                        reasonInput.style.display = 'block';
+                    } else {
+                        reasonInput.style.display = 'none';
+                        reasonInput.value = ''; // 内容をリセット
+                    }
+                });
+            });
+        };
+
+        const openFacilityModal = (facility) => {
+            currentFacilityName = facility.name;
+            
+            // タイトルなどの書き換え
+            document.querySelector('.facility-modal-content h3').innerText = `📍 ${facility.name}`;
+            
+            // 患者リストの動的生成
+            const patientListContainer = document.querySelector('.patient-list');
+            patientListContainer.innerHTML = '';
+            
+            facility.patients.forEach(p => {
+                const itemHTML = `
+                <div class="patient-item">
+                    <label class="patient-header">
+                        <input type="checkbox" class="patient-checkbox" value="${p.name.replace(' 様', '')}" data-id="${p.id}">
+                        <div>
+                            <div class="patient-name">${p.name.replace(' 様', '')} <span style="font-weight: 400; font-size: 0.9rem;">様</span></div>
+                            <div class="patient-room">${p.room}</div>
+                        </div>
+                    </label>
+                    <div class="patient-options">
+                        <div style="font-weight: 600; font-size: 0.9rem;">🚶‍♂️ 歩行訓練の実施</div>
+                        <div class="radio-group" data-id="${p.id}">
+                            <label><input type="radio" name="walk-${p.id}" value="屋内"> 屋内</label>
+                            <label><input type="radio" name="walk-${p.id}" value="屋外"> 屋外</label>
+                            <label><input type="radio" name="walk-${p.id}" value="拒否"> 拒否</label>
+                            <label><input type="radio" name="walk-${p.id}" value="未実施" checked> 未実施</label>
+                        </div>
+                        <input type="text" class="reason-input" id="reason-${p.id}" placeholder="拒否の理由や備考を入力...">
+                    </div>
+                </div>`;
+                patientListContainer.innerHTML += itemHTML;
+            });
+
+            // 動的に追加した要素に対するイベントリスナーの登録
+            attachPatientItemEvents();
+            
+            // モーダルを表示
+            facilityModal.style.display = 'flex';
+        };
+
+        btnSavePatients.addEventListener('click', async () => {
+            const checkboxes = document.querySelectorAll('.patient-checkbox:checked');
+            let logMessages = [];
+            let visitsData = [];
+            
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+            // モックなのでスタッフ名は固定
+            const staffName = "山田 太郎 医師";
+            
+            checkboxes.forEach(cb => {
+                const name = cb.value;
+                const id = cb.dataset.id;
+                
+                // 選択された歩行訓練のラジオボタンを取得
+                const walkStatus = document.querySelector(`input[name="walk-${id}"]:checked`).value;
+                let detail = `(歩行訓練: ${walkStatus}`;
+                
+                // 拒否の場合は理由も取得
+                if(walkStatus === '拒否') {
+                    const reason = document.getElementById(`reason-${id}`).value || '理由未記入';
+                    detail += ` - 理由: ${reason}`;
+                }
+                detail += ')';
+
+                logMessages.push(`${name} ${walkStatus !== '未実施' ? detail : ''}`);
+                
+                // データベース送信用データ作成
+                visitsData.push({
+                    time: timeStr,
+                    location: `${currentFacilityName} (${name} 様)`,
+                    duration: 'チェックイン済み',
+                    category: '訪問実績'
+                });
+            });
+            
+            if (logMessages.length > 0) {
+                // ボタンのローディング表示
+                const originalText = btnSavePatients.innerText;
+                btnSavePatients.innerText = "データ送信中...";
+                btnSavePatients.disabled = true;
+
+                try {
+                    const response = await fetch('/api/save-visit', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            staffName: staffName,
+                            date: dateStr,
+                            visits: visitsData
+                        })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if(result.success) {
+                        addLog(`🏥 ${currentFacilityName}の記録をサーバーへ保存しました！<br>・${logMessages.join('<br>・')}`, "success");
+                    } else {
+                        addLog(`⚠️ サーバーへの保存に失敗しました: ${result.message}`, "error");
+                    }
+                } catch (error) {
+                    addLog(`🚫 サーバーに接続できませんでした。ダッシュボード側（server.js）が起動しているか確認してください。`, "error");
+                    console.error('Fetch Error:', error);
+                } finally {
+                    btnSavePatients.innerText = originalText;
+                    btnSavePatients.disabled = false;
+                    facilityModal.style.display = 'none';
+                }
+            } else {
+                addLog(`⚠️ 患者が選択されませんでした。`, "error");
+                facilityModal.style.display = 'none';
+            }
+        });
+
+        // ==================================
+        // ジオフェンス（自動検知）デモ処理
+        // ==================================
+        let currentPos = { lat: 35.688000, lng: 139.690000 };
+        window.simInterval = null;
+        let hasArrived = false;
+
+        const calculateDistance = (lat1, lon1, lat2, lon2) => {
+            const R = 6371e3;
+            const p1 = lat1 * Math.PI/180;
+            const p2 = lat2 * Math.PI/180;
+            const dp = (lat2-lat1) * Math.PI/180;
+            const dl = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        };
+
+        document.getElementById('btn-sim-travel').addEventListener('click', () => {
+            if (window.simInterval) return;
+            if (FACILITIES_DATA.length === 0) {
+                alert('施設データがないためシミュレーションを開始できません。');
+                return;
+            }
+            const target = FACILITIES_DATA[0]; // デモは登録されている最初の施設に向かう設定
+            hasArrived = false;
+            currentPos = { lat: 35.688000, lng: 139.690000 }; // 少し離れた地点から再スタート
+            document.getElementById('btn-sim-travel').innerText = "🚗 移動シミュレーション中...";
+            document.getElementById('btn-sim-travel').disabled = true;
+            addLog("🚗 [デモ] 施設へ向けて自動移動を開始しました...", "success");
+
+            window.simInterval = setInterval(() => {
+                // 少しずつ近づく
+                currentPos.lat += 0.000180;
+                currentPos.lng += 0.000210;
+                
+                // 画面の座標値を更新
+                document.getElementById('val-lat').innerText = currentPos.lat.toFixed(6);
+                document.getElementById('val-lng').innerText = currentPos.lng.toFixed(6);
+                document.getElementById('val-acc').innerText = '5.0 m (SIM)';
+                document.getElementById('val-time').innerText = new Date().toLocaleTimeString('ja-JP');
+
+                const dist = calculateDistance(currentPos.lat, currentPos.lng, target.lat, target.lng);
+                
+                if (dist > 50) {
+                    addLog(`📡 [移動中] ${target.name}まで 約 ${Math.round(dist)}m`, "success");
+                } else if (!hasArrived) {
+                    hasArrived = true;
+                    clearInterval(window.simInterval);
+                    window.simInterval = null;
+                    document.getElementById('btn-sim-travel').style.display = 'none';
+                    document.getElementById('btn-sim-travel').innerText = "🚗 自動検知シミュレーション開始";
+                    document.getElementById('btn-sim-travel').disabled = false;
+                    
+                    addLog(`🎯 [自動検知] ${target.name} に到着しました！(誤差 ${Math.round(dist)}m)`, "success");
+                    
+                    // 1秒後に自動で施設のチェックリストモーダルを開く
+                    setTimeout(() => {
+                        openFacilityModal(target);
+                    }, 1000);
+                }
+            }, 1500);
+        });
+
+        // 位置取得成功時
+        const successCallback = (position) => {
+            if (window.simInterval) return; // シミュレーション中は本物のGPSは無視する
+            const lat = position.coords.latitude;
+            const lng = position.coords.longitude;
+            const acc = position.coords.accuracy;
+            
+            // 画面表示更新
+            document.getElementById('val-lat').innerText = lat.toFixed(6);
+            document.getElementById('val-lng').innerText = lng.toFixed(6);
+            document.getElementById('val-acc').innerText = acc.toFixed(1) + ' m';
+            document.getElementById('val-time').innerText = new Date(position.timestamp).toLocaleTimeString('ja-JP');
+
+            // 精度が悪すぎる場合（例: 100m以上ズレている）は誤検知を防ぐためスキップ
+            if (acc > 100) return;
+
+            // 本物のジオフェンス判定
+            FACILITIES_DATA.forEach(facility => {
+                const dist = calculateDistance(lat, lng, facility.lat, facility.lng);
+                
+                // 50メートル以内に入った ＆ まだ「到着」扱いになっていない場合
+                if (dist <= 50 && !facility.isInside) {
+                    facility.isInside = true;
+                    addLog(`🎯 [自動検知] ${facility.name} への到着をGPSで検知しました！（誤差 ${Math.floor(dist)}m）`, "success");
+                    
+                    // 自動で施設のモーダルを開く
+                    openFacilityModal(facility);
+                } 
+                // 100メートル以上離れた場合、次回再び入れるようにリセット
+                else if (dist > 100 && facility.isInside) {
+                    facility.isInside = false;
+                    addLog(`🚶 [退出検知] ${facility.name} エリアから離れました。また訪れた際に検知します。`, "success");
+                }
+            });
+        };
+
+        // 位置取得エラー時
+        const errorCallback = (error) => {
+            let errorMsg = "位置情報エラー: ";
+            switch(error.code) {
+                case error.PERMISSION_DENIED:
+                    errorMsg += "許可が拒否されました。";
+                    permissionAlert.style.display = 'block';
+                    btnStop.click(); // 強制停止
+                    break;
+                case error.POSITION_UNAVAILABLE:
+                    errorMsg += "位置情報が取得できません。";
+                    break;
+                case error.TIMEOUT:
+                    errorMsg += "タイムアウトしました。";
+                    break;
+                default:
+                    errorMsg += "不明なエラーです。";
+                    break;
+            }
+            addLog(errorMsg, "error");
+        };
+
+    </script>
+</body>
+</html>
