@@ -332,6 +332,39 @@ app.delete('/api/patients/:id', (req, res) => {
     });
 });
 
+// 一括インポート用API
+app.post('/api/batch-import', (req, res) => {
+    const { items } = req.body; // [{ patientName, address, lat, lng, zip }]
+    
+    if (!items || !Array.isArray(items)) {
+        return res.status(400).json({ success: false, message: 'データ形式が正しくありません。' });
+    }
+
+    db.serialize(() => {
+        const stmtFac = db.prepare(`INSERT INTO facilities (id, name, lat, lng) VALUES (?, ?, ?, ?)`);
+        const stmtPat = db.prepare(`INSERT INTO patients (id, facility_id, name, room) VALUES (?, ?, ?, ?)`);
+
+        items.forEach(item => {
+            const facId = 'f_' + Math.random().toString(36).substr(2, 9);
+            const patId = 'p_' + Math.random().toString(36).substr(2, 9);
+            
+            // 施設名は住所、または「〇〇様宅」の形式にする
+            const facName = item.address || `${item.patientName}様宅`;
+            
+            stmtFac.run(facId, facName, item.lat, item.lng);
+            stmtPat.run(patId, facId, item.patientName, `〒${item.zip}`);
+        });
+
+        stmtFac.finalize();
+        stmtPat.finalize();
+        
+        res.json({ 
+            success: true, 
+            message: `${items.length}件のデータをインポートしました。` 
+        });
+    });
+});
+
 // サーバーの起動
 app.listen(PORT, () => {
     console.log('=============================================');
