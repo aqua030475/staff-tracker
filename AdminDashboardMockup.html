@@ -1454,8 +1454,11 @@
                         </div>
                     `;
                     
+                    const facHtml = `<div style="background-color: #3b82f6; color: white; border: 2px solid #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 14px;">🏠</div>`;
+                    const customIcon = L.divIcon({ html: facHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+                    
                     // 施設用の固定ピン
-                    const marker = L.marker([fac.lat, fac.lng]).addTo(facilityLayerGroup);
+                    const marker = L.marker([fac.lat, fac.lng], { icon: customIcon }).addTo(facilityLayerGroup);
                     marker.bindPopup(popupContent);
                 }
             });
