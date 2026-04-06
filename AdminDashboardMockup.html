@@ -239,9 +239,11 @@
             justify-content: center;
             align-items: center;
             z-index: 1000;
-            pointer-events: none; /* マップへのクリックを透過させる */
         }
-        .modal-overlay.active { display: flex; } /* JavaScriptで制御するため */
+        .modal-overlay.active { 
+            display: flex; 
+            pointer-events: auto; /* アクティブ時は全域でクリックを有効にする */
+        }
 
         .modal-content {
             background: white;
@@ -552,10 +554,10 @@
                 <button class="btn-close" id="btn-close-manage-modal">&times;</button>
             </div>
 
-            <div class="manage-modal-tabs">
-                <button class="manage-tab active" data-tab="new">新規登録</button>
-                <button class="manage-tab" data-tab="list">一覧・管理</button>
-                <button class="manage-tab" data-tab="batch">一括登録（エクセルなど）</button>
+            <div class="manage-tabs">
+                <div class="manage-tab active" data-tab="new">新規登録</div>
+                <div class="manage-tab" data-tab="list">一覧・管理</div>
+                <div class="manage-tab" data-tab="batch">一括登録（エクセルなど）</div>
             </div>
 
             <div id="tab-new" class="manage-tab-content active">
@@ -624,7 +626,13 @@
                     ※住所から地図上の位置を自動で特定します。
                 </p>
                 <textarea id="batch-import-text" placeholder="例：&#13;&#10;津田 悦子	460-0025	愛知県名古屋市中区古渡町17番7号&#13;&#10;林 壽一	468-0072	名古屋市天白区大坪二丁目801番地"
-                    style="width:100%; height:200px; padding:12px; border:1px solid #e2e8f0; border-radius:8px; font-family:monospace; font-size:0.85rem; margin-bottom:16px; resize:vertical;"></textarea>
+                    style="width:100%; height:200px; padding:12px; border:2px solid #e2e8f0; border-radius:8px; font-family:monospace; font-size:0.85rem; margin-bottom:16px; resize:vertical; outline:none; transition: border-color 0.2s;"></textarea>
+                <style>
+                    #batch-import-text:focus {
+                        border-color: var(--primary) !important;
+                        background-color: #fff;
+                    }
+                </style>
                 
                 <div id="batch-import-progress" style="display:none; margin-bottom:16px; padding:12px; background:#f1f5f9; border-radius:8px;">
                     <div style="font-size: 0.85rem; margin-bottom: 8px;">処理中... <span id="batch-count-status">0/0</span></div>
