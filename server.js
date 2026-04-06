@@ -332,6 +332,16 @@ app.delete('/api/patients/:id', (req, res) => {
     });
 });
 
+// 全データ消去用API（本番運用開始前のリセット用）
+app.delete('/api/all', (req, res) => {
+    db.serialize(() => {
+        db.run(`DELETE FROM facilities`);
+        db.run(`DELETE FROM patients`);
+        db.run(`DELETE FROM visits`);
+        res.json({ success: true, message: 'すべてのデータを消去しました。' });
+    });
+});
+
 // 一括インポート用API
 app.post('/api/batch-import', (req, res) => {
     const { items } = req.body; // [{ patientName, address, lat, lng, zip }]
@@ -348,11 +358,11 @@ app.post('/api/batch-import', (req, res) => {
             const facId = 'f_' + Math.random().toString(36).substr(2, 9);
             const patId = 'p_' + Math.random().toString(36).substr(2, 9);
             
-            // 施設名は住所、または「〇〇様宅」の形式にする
-            const facName = item.address || `${item.patientName}様宅`;
+            // 施設名をお客様名（〇〇様）にする
+            const facName = `${item.patientName} 様`;
             
             stmtFac.run(facId, facName, item.lat, item.lng);
-            stmtPat.run(patId, facId, item.patientName, `〒${item.zip}`);
+            stmtPat.run(patId, facId, item.patientName, `〒${item.zip} ${item.address}`);
         });
 
         stmtFac.finalize();

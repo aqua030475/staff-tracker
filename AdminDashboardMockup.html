@@ -641,7 +641,8 @@
                     </div>
                 </div>
 
-                <button id="btn-execute-batch" class="btn btn-start" style="width:100%;">🚀 インポートを開始する</button>
+                <button id="btn-execute-batch" class="btn btn-start" style="width:100%; margin-bottom: 8px;">🚀 インポートを開始する</button>
+                <button id="btn-clear-all" class="btn" style="width:100%; background: #fee2e2; color: #991b1b; padding: 12px; font-size: 0.9rem;">⚠️ 現在のデータをすべて消去してリセットする</button>
             </div>
         </div>
     </div>
@@ -1223,6 +1224,22 @@
             btn.disabled = false;
             btn.innerText = '🚀 インポートを開始する';
             progressArea.style.display = 'none';
+        });
+
+        // 全データ消去の実行ロジック
+        document.getElementById('btn-clear-all').addEventListener('click', async () => {
+            if (!confirm('本当にすべての登録データを消去しますか？\n（施設、患者、日報記録のすべてが消えます。この操作は取り消せません）')) return;
+            
+            try {
+                const res = await fetch(`${API_BASE}/api/all`, { method: 'DELETE' });
+                const result = await res.json();
+                if (result.success) {
+                    alert('すべて消去しました。');
+                    location.reload();
+                }
+            } catch (err) {
+                alert('消去中にエラーが発生しました。');
+            }
         });
 
         // 検索フィルター
