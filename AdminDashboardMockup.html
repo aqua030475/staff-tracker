@@ -610,27 +610,30 @@
                     <input type="text" id="manage-search-input" placeholder="施設名・患者名で絞り込み...">
                     <i class="fas fa-search">🔍</i>
                 </div>
+                </div>
                 <div id="manage-tree-container" style="padding-bottom: 40px;">
                     <!-- JSでアコーディオン形式で生成 -->
-                <!-- 一括登録タブ -->
-                <div id="tab-batch" class="manage-tab-content">
-                    <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 12px;">
-                        エクセル等の表をコピーして、下の枠に貼り付けてください。<br>
-                        形式：<b>[名前] [郵便番号] [住所]</b>（タブ区切り推奨）<br>
-                        ※住所から地図上の位置を自動で特定します。
-                    </p>
-                    <textarea id="batch-import-text" placeholder="例：&#13;&#10;津田 悦子	460-0025	愛知県名古屋市中区古渡町17番7号&#13;&#10;林 壽一	468-0072	名古屋市天白区大坪二丁目801番地"
-                        style="width:100%; height:200px; padding:12px; border:1px solid #e2e8f0; border-radius:8px; font-family:monospace; font-size:0.85rem; margin-bottom:16px; resize:vertical;"></textarea>
-                    
-                    <div id="batch-import-progress" style="display:none; margin-bottom:16px; padding:12px; background:#f1f5f9; border-radius:8px;">
-                        <div style="font-size: 0.85rem; margin-bottom: 8px;">処理中... <span id="batch-count-status">0/0</span></div>
-                        <div style="width:100%; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden;">
-                            <div id="batch-progress-bar" style="width:0%; height:100%; background:var(--primary); transition:width 0.3s;"></div>
-                        </div>
-                    </div>
-
-                    <button id="btn-execute-batch" class="btn btn-start" style="width:100%;">🚀 インポートを開始する</button>
                 </div>
+            </div>
+
+            <!-- タブ3: 一括登録 -->
+            <div id="tab-batch" class="manage-tab-content">
+                <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 12px;">
+                    エクセル等の表をコピーして、下の枠に貼り付けてください。<br>
+                    形式：<b>[名前] [郵便番号] [住所]</b>（タブ区切り推奨）<br>
+                    ※住所から地図上の位置を自動で特定します。
+                </p>
+                <textarea id="batch-import-text" placeholder="例：&#13;&#10;津田 悦子	460-0025	愛知県名古屋市中区古渡町17番7号&#13;&#10;林 壽一	468-0072	名古屋市天白区大坪二丁目801番地"
+                    style="width:100%; height:200px; padding:12px; border:1px solid #e2e8f0; border-radius:8px; font-family:monospace; font-size:0.85rem; margin-bottom:16px; resize:vertical;"></textarea>
+                
+                <div id="batch-import-progress" style="display:none; margin-bottom:16px; padding:12px; background:#f1f5f9; border-radius:8px;">
+                    <div style="font-size: 0.85rem; margin-bottom: 8px;">処理中... <span id="batch-count-status">0/0</span></div>
+                    <div style="width:100%; height:6px; background:#e2e8f0; border-radius:3px; overflow:hidden;">
+                        <div id="batch-progress-bar" style="width:0%; height:100%; background:var(--primary); transition:width 0.3s;"></div>
+                    </div>
+                </div>
+
+                <button id="btn-execute-batch" class="btn btn-start" style="width:100%;">🚀 インポートを開始する</button>
             </div>
         </div>
     </div>
