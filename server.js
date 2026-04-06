@@ -99,6 +99,22 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(__dirname)); // ローカルHTMLファイルの配信用
 app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // アップロード画像の配信用
 
+// --- ページ（HTML）のルート設定 ---
+// ブラウザで https://xxx.onrender.com/ にアクセスしたとき
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'AdminDashboardMockup.html'));
+});
+
+// ブラウザで https://xxx.onrender.com/admin にアクセスしたとき
+app.get('/admin', (req, res) => {
+    res.sendFile(path.join(__dirname, 'AdminDashboardMockup.html'));
+});
+
+// ブラウザで https://xxx.onrender.com/staff にアクセスしたとき（スマホ用）
+app.get('/staff', (req, res) => {
+    res.sendFile(path.join(__dirname, 'StaffAppMockup.html'));
+});
+
 // ==========================================
 // ⚠️ 以下にお使いのGmail情報を入力してください
 // ==========================================
