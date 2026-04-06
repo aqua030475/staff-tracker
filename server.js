@@ -69,26 +69,7 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
                 name TEXT,
                 room TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )`, () => {
-                // 初期データ挿入（データがない場合のみ）
-                db.get("SELECT COUNT(*) as count FROM facilities", [], (err, row) => {
-                    if (row && row.count === 0) {
-                        console.log('🌱 初期施設データを挿入します...');
-                        const stmtFac = db.prepare(`INSERT INTO facilities (id, name, lat, lng) VALUES (?, ?, ?, ?)`);
-                        const stmtPat = db.prepare(`INSERT INTO patients (id, facility_id, name, room) VALUES (?, ?, ?, ?)`);
-                        
-                        stmtFac.run('f1', 'さくら老人ホーム', 35.119736, 136.959581);
-                        stmtFac.run('f2', 'ひまわりケアセンター', 35.122000, 136.955000);
-                        
-                        stmtPat.run('1', 'f1', '山田 太郎 様', '101号室 / 定期往診・リハビリ');
-                        stmtPat.run('2', 'f1', '佐藤 花子 様', '202号室 / 採血・点滴設定なし');
-                        stmtPat.run('3', 'f2', '鈴木 一郎 様', '3F / 鍼灸・マッサージ');
-                        
-                        stmtFac.finalize();
-                        stmtPat.finalize();
-                    }
-                });
-            });
+            )`);
         });
     }
 });
