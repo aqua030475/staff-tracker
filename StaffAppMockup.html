@@ -304,13 +304,60 @@
             border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
             display: flex; align-items: center; gap: 8px; width: fit-content;
         }
+        /* Staff Selection Modal */
+        #staff-select-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: white;
+            z-index: 2000;
+            display: none;
+            flex-direction: column;
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .staff-opt-btn {
+            background: white;
+            border: 2px solid var(--border);
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .staff-opt-btn:active {
+            background: #f1f5f9;
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .switch-staff-link {
+            font-size: 0.8rem;
+            color: rgba(255,255,255,0.8);
+            text-decoration: underline;
+            margin-top: 4px;
+            display: block;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-
     <header>
-        📱 往診トラッカー (スタッフ用)
+        <div id="header-staff-name">スタッフ用トラッカー</div>
+        <div class="switch-staff-link" id="btn-switch-staff" style="font-size: 0.85rem; margin-top: 4px; text-decoration: underline;">別のスタッフで利用する</div>
     </header>
+
+    <!-- スタッフ選択モーダル -->
+    <div id="staff-select-modal">
+        <h2 style="margin-bottom: 8px;">ご利用者を選択</h2>
+        <p style="color: var(--text-muted); margin-bottom: 32px;">あなたの名前を選択してください</p>
+        <div id="staff-options-container">
+            <!-- JSで生成 -->
+        </div>
+    </div>
 
     <main>
         <div class="card">
@@ -405,8 +452,60 @@
         const btnCloseFacility = document.getElementById('btn-close-facility');
         const cameraInput = document.getElementById('hidden-camera-input');
 
-        // APIのベースURL設定 (file:// で開いた場合は localhost:3000 を向く)
         const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
+
+        // --- スタッフ選択ロジック ---
+        let currentStaff = null;
+
+        const loadStaffSelection = async () => {
+            const savedStaff = localStorage.getItem('selectedStaff');
+            if (savedStaff) {
+                currentStaff = JSON.parse(savedStaff);
+                updateHeader();
+                return;
+            }
+
+            const modal = document.getElementById('staff-select-modal');
+            const container = document.getElementById('staff-options-container');
+            modal.style.display = 'flex';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/staff`);
+                const result = await res.json();
+                if (result.success) {
+                    container.innerHTML = '';
+                    result.data.forEach(staff => {
+                        const btn = document.createElement('div');
+                        btn.className = 'staff-opt-btn';
+                        btn.innerText = `${staff.name} (${staff.role || ''})`;
+                        btn.onclick = () => {
+                            currentStaff = staff;
+                            localStorage.setItem('selectedStaff', JSON.stringify(staff));
+                            modal.style.display = 'none';
+                            updateHeader();
+                        };
+                        container.appendChild(btn);
+                    });
+                }
+            } catch (e) {
+                container.innerHTML = 'スタッフ情報の取得に失敗しました。';
+            }
+        };
+
+        const updateHeader = () => {
+            if (currentStaff) {
+                document.getElementById('header-staff-name').innerText = currentStaff.name;
+            }
+        };
+
+        document.getElementById('btn-switch-staff').onclick = () => {
+            if(confirm('スタッフを切り替えますか？')) {
+                localStorage.removeItem('selectedStaff');
+                location.reload();
+            }
+        };
+
+        loadStaffSelection();
 
         let watchId = null;
         let isTracking = false;
@@ -417,6 +516,7 @@
 
         // 本番用施設マスタデータ (サーバーから動的に取得)
         let FACILITIES_DATA = [];
+        let currentFacilityId = null;
 
         // サーバーから施設・患者データを取得
         const loadFacilities = async () => {
@@ -646,6 +746,7 @@
 
         const openFacilityModal = (facility) => {
             currentFacilityName = facility.name;
+            currentFacilityId = facility.id;
             
             // タイトルなどの書き換え
             document.querySelector('.facility-modal-content h3').innerText = `📍 ${facility.name}`;

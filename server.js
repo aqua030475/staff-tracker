@@ -70,6 +70,26 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
                 room TEXT,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )`);
+            
+            db.run(`CREATE TABLE IF NOT EXISTS staff (
+                id TEXT PRIMARY KEY,
+                name TEXT,
+                role TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )`);
+
+            db.run(`CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT
+            )`);
+
+            // 初回起動時にスタッフがいない場合は、既存のダミー情報を追加しておく
+            db.get("SELECT COUNT(*) as count FROM staff", (err, row) => {
+                if (row && row.count === 0) {
+                    db.run(`INSERT INTO staff (id, name, role) VALUES ('s1', '山田 太郎 医師', '医師')`);
+                    db.run(`INSERT INTO staff (id, name, role) VALUES ('s2', '伊藤 花子 看護師', '看護師')`);
+                }
+            });
         });
     }
 });
@@ -329,6 +349,50 @@ app.delete('/api/patients/:id', (req, res) => {
             return res.status(500).json({ success: false, message: '削除エラー' });
         }
         res.status(200).json({ success: true, message: '患者を削除しました。' });
+    });
+});
+
+// --- スタッフ用API ---
+app.get('/api/staff', (req, res) => {
+    db.all("SELECT * FROM staff ORDER BY created_at ASC", [], (err, rows) => {
+        if (err) return res.status(500).json({ success: false, error: err.message });
+        res.json({ success: true, data: rows });
+    });
+});
+
+app.post('/api/staff', (req, res) => {
+    const { id, name, role } = req.body;
+    if (!id || !name) return res.status(400).json({ success: false, message: '名前が必要です。' });
+    
+    db.run("INSERT INTO staff (id, name, role) VALUES (?, ?, ?)", [id, name, role || 'スタッフ'], function(err) {
+        if (err) return res.status(500).json({ success: false, message: '登録に失敗しました。' });
+        res.json({ success: true });
+    });
+});
+
+app.delete('/api/staff/:id', (req, res) => {
+    const { id } = req.params;
+    db.run("DELETE FROM staff WHERE id = ?", [id], function(err) {
+        if (err) return res.status(500).json({ success: false, message: '削除に失敗しました。' });
+        res.json({ success: true });
+    });
+});
+
+// --- 設定用API ---
+app.get('/api/settings', (req, res) => {
+    db.all("SELECT * FROM settings", [], (err, rows) => {
+        if (err) return res.status(500).json({ success: false, error: err.message });
+        const settings = {};
+        rows.forEach(r => settings[r.key] = r.value);
+        res.json({ success: true, data: settings });
+    });
+});
+
+app.post('/api/settings', (req, res) => {
+    const { key, value } = req.body;
+    db.run("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", [key, value], function(err) {
+        if (err) return res.status(500).json({ success: false, message: '保存に失敗しました。' });
+        res.json({ success: true });
     });
 });
 

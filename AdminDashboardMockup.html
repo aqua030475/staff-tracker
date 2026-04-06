@@ -558,6 +558,8 @@
                 <div class="manage-tab active" data-tab="new">新規登録</div>
                 <div class="manage-tab" data-tab="list">一覧・管理</div>
                 <div class="manage-tab" data-tab="batch">一括登録（エクセルなど）</div>
+                <div class="manage-tab" data-tab="staff">スタッフ管理</div>
+                <div class="manage-tab" data-tab="settings">連携設定</div>
             </div>
 
             <div id="tab-new" class="manage-tab-content active">
@@ -644,6 +646,42 @@
                 <button id="btn-execute-batch" class="btn btn-start" style="width:100%; margin-bottom: 8px;">🚀 インポートを開始する</button>
                 <button id="btn-clear-all" class="btn" style="width:100%; background: #fee2e2; color: #991b1b; padding: 12px; font-size: 0.9rem;">⚠️ 現在のデータをすべて消去してリセットする</button>
             </div>
+
+            <!-- タブ4: スタッフ管理 -->
+            <div id="tab-staff" class="manage-tab-content">
+                <div style="margin-bottom: 24px;">
+                    <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--primary);">👨‍⚕️ スタッフの新規登録</h3>
+                    <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+                        <input type="text" id="new-staff-name" placeholder="氏名（例: 山田 太郎）" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                        <input type="text" id="new-staff-role" placeholder="職種（例: 医師）" style="width: 100px; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                        <button class="btn-primary" id="btn-submit-staff" style="padding: 8px 16px;">追加</button>
+                    </div>
+                </div>
+
+                <div style="border-top: 1px solid var(--border); padding-top: 20px;">
+                    <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--text-main);">📋 スタッフ一覧</h3>
+                    <div id="manage-staff-list" style="display: flex; flex-direction: column; gap: 8px;">
+                        <!-- JSで生成 -->
+                    </div>
+                </div>
+            </div>
+
+            <!-- タブ5: 連携設定 -->
+            <div id="tab-settings" class="manage-tab-content">
+                <div style="margin-bottom: 24px;">
+                    <h3 style="font-size: 1rem; margin-bottom: 12px; color: var(--primary);">📊 Googleスプレッドシート連携</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-muted); margin-bottom: 16px;">
+                        スタッフが記録を保存した際、自動的にスプレッドシートへ書き出すための設定です。
+                    </p>
+                    <div style="display: flex; flex-direction: column; gap: 12px;">
+                        <div>
+                            <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">Webhook URL (Google Apps Script)</label>
+                            <input type="text" id="setting-google-sheet-url" placeholder="https://script.google.com/macros/s/..." style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border); margin-bottom: 8px;">
+                        </div>
+                        <button class="btn-primary" id="btn-save-settings" style="padding: 10px;">設定を保存する</button>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -663,41 +701,8 @@
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
-        // ダミーデータ（本来はデータベースから取得する内容）
-        const staffData = [
-            {
-                id: 1,
-                name: '山田 太郎 医師',
-                status: '滞在中',
-                isMoving: false,
-                route: [
-                    [35.1220, 136.9550],
-                    [35.1210, 136.9580],
-                    [35.1197, 136.9596],
-                ],
-                timeline: [
-                    { time: '09:00 - 10:15', location: '佐藤様 宅 (瑞穂区)', duration: '1時間15分', category: 'マッサージ', active: false },
-                    { time: '10:30 - 11:00', location: '鈴木様 宅 (瑞穂区)', duration: '30分', category: '鍼灸', active: false },
-                    { time: '11:15 - 現在', location: '高橋様 宅 (白砂町)', duration: '滞在中 (45分経過)', category: 'ダブル', active: true }
-                ]
-            },
-            {
-                id: 2,
-                name: '伊藤 花子 看護師',
-                status: '移動中',
-                isMoving: true,
-                route: [
-                    [35.1150, 136.9650],
-                    [35.1170, 136.9620],
-                    [35.1180, 136.9610],
-                ],
-                timeline: [
-                    { time: '09:30 - 10:45', location: '渡辺様 宅 (瑞穂区)', duration: '1時間15分', category: 'マッサージ', active: false },
-                    { time: '11:00 - 11:50', location: '小林様 宅 (弥富通)', duration: '50分', category: '鍼灸', active: false },
-                    { time: '11:50 - 現在', location: '移動中 (次の訪問先へ)', duration: '15分経過', category: '未設定', active: true }
-                ]
-            }
-        ];
+        // スタッフデータ（APIから取得するように変更）
+        let staffData = [];
 
         // マップの初期化（名古屋市瑞穂区白砂町を基準に設定）
         const map = L.map('map').setView([35.119736, 136.959581], 15);
@@ -736,36 +741,54 @@
         let isPickingLocation = false;
         let pickerMarker = null;
 
-        // スタッフリストの生成
+        // スタッフリストの生成（API連携版）
         const renderStaffList = async () => {
             const container = document.getElementById('staff-list');
-            container.innerHTML = '';
+            if (!container) return;
+            container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">読み込み中...</div>';
 
-            // 本来はAPIから取得したいが、デモ用に固定。ただしAPIから件数を取れるようにする
-            staffData.forEach((staff, index) => {
-                const card = document.createElement('div');
-                card.className = `staff-card ${index === 0 ? 'active' : ''}`;
-                const statusClass = staff.isMoving ? 'moving' : 'active';
+            try {
+                const response = await fetch(`${API_BASE}/api/staff`);
+                const result = await response.json();
                 
-                card.innerHTML = `
-                    <div class="staff-name">${staff.name}</div>
-                    <div class="staff-status">
-                        <div class="status-dot ${statusClass}"></div>
-                        ${staff.status}
-                    </div>
-                `;
+                if (result.success) {
+                    staffData = result.data.map(s => ({
+                        ...s,
+                        status: '待機中', // 初期状態
+                        isMoving: false,
+                        route: [],
+                        timeline: []
+                    }));
 
-                card.onclick = () => {
-                    document.querySelectorAll('.staff-card').forEach(c => c.classList.remove('active'));
-                    card.classList.add('active');
-                    selectStaff(staff);
-                };
+                    container.innerHTML = '';
+                    staffData.forEach((staff, index) => {
+                        const card = document.createElement('div');
+                        card.className = `staff-card ${index === 0 ? 'active' : ''}`;
+                        const statusClass = staff.isMoving ? 'moving' : 'active';
+                        
+                        card.innerHTML = `
+                            <div class="staff-name">${staff.name}</div>
+                            <div class="staff-status">
+                                <div class="status-dot ${statusClass}"></div>
+                                ${staff.status}
+                            </div>
+                        `;
 
-                container.appendChild(card);
-            });
-            
-            // 初期表示
-            if (staffData.length > 0) selectStaff(staffData[0]);
+                        card.onclick = () => {
+                            document.querySelectorAll('.staff-card').forEach(c => c.classList.remove('active'));
+                            card.classList.add('active');
+                            selectStaff(staff);
+                        };
+
+                        container.appendChild(card);
+                    });
+
+                    // 初回表示
+                    if (staffData.length > 0 && !currentStaff) selectStaff(staffData[0]);
+                }
+            } catch (err) {
+                container.innerHTML = '<div style="text-align:center; padding:10px; color:red;">スタッフの読み込みに失敗しました</div>';
+            }
         };
 
         // 写真ビューア（Lightbox）の制御
@@ -1240,6 +1263,131 @@
             } catch (err) {
                 alert('消去中にエラーが発生しました。');
             }
+        });
+
+        // --- スタッフ管理ロジック ---
+        const renderManageStaffList = async () => {
+            const listEl = document.getElementById('manage-staff-list');
+            if (!listEl) return;
+            listEl.innerHTML = '読み込み中...';
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/staff`);
+                const result = await response.json();
+                if (result.success) {
+                    listEl.innerHTML = '';
+                    result.data.forEach(staff => {
+                        const item = document.createElement('div');
+                        item.style.display = 'flex';
+                        item.style.justifyContent = 'space-between';
+                        item.style.alignItems = 'center';
+                        item.style.padding = '12px';
+                        item.style.background = '#f8fafc';
+                        item.style.border = '1px solid #e2e8f0';
+                        item.style.borderRadius = '8px';
+                        
+                        item.innerHTML = `
+                            <div>
+                                <div style="font-weight:600;">${staff.name}</div>
+                                <div style="font-size:0.8rem; color:var(--text-muted);">${staff.role || '-'}</div>
+                            </div>
+                            <button class="btn" style="color:var(--danger); background:transparent; box-shadow:none; padding:4px 8px;" onclick="window.deleteStaff('${staff.id}')">削除</button>
+                        `;
+                        listEl.appendChild(item);
+                    });
+                }
+            } catch (err) {
+                listEl.innerHTML = '読み込み失敗';
+            }
+        };
+
+        window.deleteStaff = async (id) => {
+            if (!confirm('このスタッフを削除してよろしいですか？')) return;
+            try {
+                const res = await fetch(`${API_BASE}/api/staff/${id}`, { method: 'DELETE' });
+                const result = await res.json();
+                if (result.success) {
+                    renderManageStaffList();
+                    renderStaffList();
+                }
+            } catch (e) { alert('削除に失敗しました'); }
+        };
+
+        document.getElementById('btn-submit-staff').addEventListener('click', async () => {
+            const nameEl = document.getElementById('new-staff-name');
+            const roleEl = document.getElementById('new-staff-role');
+            const name = nameEl.value.trim();
+            const role = roleEl.value.trim();
+            if (!name) return alert('氏名を入力してください');
+            
+            const id = 's_' + Date.now();
+            try {
+                const res = await fetch(`${API_BASE}/api/staff`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ id, name, role })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    nameEl.value = '';
+                    roleEl.value = '';
+                    renderManageStaffList();
+                    renderStaffList();
+                }
+            } catch (e) { alert('登録に失敗しました'); }
+        });
+
+        // タブ切り替え時にリストを更新
+        // --- 連携設定ロジック ---
+        const loadSettings = async () => {
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`);
+                const result = await response.json();
+                if (result.success) {
+                    const urlInput = document.getElementById('setting-google-sheet-url');
+                    if (urlInput) urlInput.value = result.data.google_sheet_webhook_url || '';
+                }
+            } catch (err) { console.error('Settings load error:', err); }
+        };
+
+        document.getElementById('btn-save-settings').addEventListener('click', async () => {
+            const url = document.getElementById('setting-google-sheet-url').value.trim();
+            const btn = document.getElementById('btn-save-settings');
+            btn.disabled = true;
+            btn.innerText = '保存中...';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'google_sheet_webhook_url', value: url })
+                });
+                const result = await res.json();
+                if (result.success) {
+                    alert('設定を保存しました。以降の保存データからスプレッドシートに反映されます。');
+                }
+            } catch (err) { alert('保存に失敗しました。'); }
+            btn.disabled = false;
+            btn.innerText = '設定を保存する';
+        });
+
+        // タブ切り替え時にリストを更新
+        document.querySelectorAll('.manage-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const contents = document.querySelectorAll('.manage-tab-content');
+                const tabs = document.querySelectorAll('.manage-tab');
+                
+                tabs.forEach(t => t.classList.remove('active'));
+                contents.forEach(c => c.classList.remove('active'));
+                
+                tab.classList.add('active');
+                const targetContent = document.getElementById(`tab-${tab.dataset.tab}`);
+                if (targetContent) targetContent.classList.add('active');
+
+                if (tab.dataset.tab === 'staff') renderManageStaffList();
+                if (tab.dataset.tab === 'list') loadManagementLists();
+                if (tab.dataset.tab === 'settings') loadSettings();
+            });
         });
 
         // 検索フィルター
