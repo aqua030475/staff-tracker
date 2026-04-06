@@ -736,6 +736,8 @@
         let currentPolyline = null;
         let currentMarkers = [];
         let currentStaff = null;
+        // 施設ピン用レイヤー
+        const facilityLayerGroup = L.layerGroup().addTo(map);
 
         // 時計の更新
         setInterval(() => {
@@ -1428,10 +1430,35 @@
                 if (result.success) {
                     cachedManagementData = result.data;
                     renderManagementTree();
+                    renderFacilityMarkers(); // 地図にピンを立てる
                 }
             } catch (err) {
                 console.error('リスト読み込みエラー:', err);
             }
+        };
+
+        const renderFacilityMarkers = () => {
+            facilityLayerGroup.clearLayers();
+            
+            cachedManagementData.forEach(fac => {
+                if (fac.lat && fac.lng) {
+                    const patientList = fac.patients.map(p => `<li style="margin-bottom: 2px;">👤 ${p.name} (${p.room})</li>`).join('');
+                    const popupContent = `
+                        <div style="font-family: inherit; font-size: 0.85rem; min-width: 150px;">
+                            <strong style="color: var(--primary);">🏠 ${fac.name}</strong><br>
+                            <span style="font-size: 0.7rem; color: var(--text-muted);">住所: ${fac.id}</span>
+                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 8px 0;">
+                            <ul style="margin: 0; padding: 0 0 0 0; list-style-type: none;">
+                                ${patientList || '<li style="color: var(--text-muted);">患者未登録</li>'}
+                            </ul>
+                        </div>
+                    `;
+                    
+                    // 施設用の固定ピン
+                    const marker = L.marker([fac.lat, fac.lng]).addTo(facilityLayerGroup);
+                    marker.bindPopup(popupContent);
+                }
+            });
         };
 
         const renderManagementTree = (filter = "") => {
@@ -1465,11 +1492,18 @@
                             if (filter && !pat.name.toLowerCase().includes(lowerFilter)) return '';
                             return `
                                 <div class="patient-sub-item">
-                                    <div>
+                                    <div style="flex: 1;">
                                         <div style="font-weight:600; font-size:0.85rem;">👤 ${pat.name}</div>
                                         <div style="font-size:0.7rem; color:var(--text-muted);">${pat.room} (ID: ${pat.id})</div>
                                     </div>
-                                    <button onclick="deletePatient('${pat.id}')" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:0.75rem;">削除</button>
+                                    <div style="display: flex; align-items: center; gap: 8px;">
+                                        <div style="font-size: 0.7rem; color: var(--text-muted);">移動先:</div>
+                                        <select onchange="window.updatePatientFacility('${pat.id}', this.value)" style="font-size: 0.75rem; padding: 2px 4px; border-radius: 4px; border: 1px solid var(--border); max-width: 120px;">
+                                            <option value="${fac.id}" selected>-- 移動なし --</option>
+                                            ${facilityOptions}
+                                        </select>
+                                        <button onclick="deletePatient('${pat.id}')" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.2rem; padding: 0 8px;">&times;</button>
+                                    </div>
                                 </div>
                             `;
                         }).join('')}
@@ -1547,7 +1581,8 @@
 
         // 初期表示
         renderStaffList();
-        selectStaff(staffData[0]);
+        loadManagementLists(); // 施設ピンとリストを初期表示
+        if (staffData.length > 0) selectStaff(staffData[0]);
 
     </script>
 </body>

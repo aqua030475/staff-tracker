@@ -330,6 +330,22 @@ app.post('/api/patients', async (req, res) => {
     }
 });
 
+// 患者更新（所属施設の変更など）API
+app.put('/api/patients/:id', async (req, res) => {
+    const { id } = req.params;
+    const { facility_id } = req.body;
+    try {
+        await pool.query(
+            "UPDATE patients SET facility_id = $1 WHERE id = $2",
+            [facility_id, id]
+        );
+        res.status(200).json({ success: true, message: '患者情報を更新しました。' });
+    } catch (err) {
+        console.error('患者更新エラー:', err.message);
+        res.status(500).json({ success: false, message: '更新エラー' });
+    }
+});
+
 // 施設削除API
 app.delete('/api/facilities/:id', async (req, res) => {
     const { id } = req.params;
