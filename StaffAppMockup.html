@@ -273,7 +273,36 @@
         }
         .reason-input {
             width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;
-            font-size: 0.85rem; box-sizing: border-box; display: none;
+            font-size: 0.85rem; box-sizing: border-box; display: none; margin-bottom: 12px;
+        }
+        .notes-textarea {
+            width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px;
+            font-size: 0.85rem; box-sizing: border-box; min-height: 80px; resize: none; margin-bottom: 12px;
+            background: white;
+        }
+        .photo-gallery-title {
+            font-weight: 600; font-size: 0.9rem; margin-bottom: 8px; display: flex; align-items: center; gap: 6px;
+        }
+        .photo-gallery {
+            display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px;
+        }
+        .photo-thumb-container {
+            width: 80px; height: 80px; border-radius: 8px; border: 1px solid var(--border);
+            position: relative; overflow: hidden; background: #e2e8f0;
+        }
+        .photo-thumb {
+            width: 100%; height: 100%; object-fit: cover;
+        }
+        .photo-delete {
+            position: absolute; top: 2px; right: 2px; background: rgba(0,0,0,0.6);
+            color: white; border-radius: 50%; width: 20px; height: 20px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 12px; cursor: pointer; border: 1px solid white;
+        }
+        .btn-camera {
+            background-color: var(--primary); color: white; border: none; padding: 10px 16px;
+            border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+            display: flex; align-items: center; gap: 8px; width: fit-content;
         }
     </style>
 </head>
@@ -338,6 +367,8 @@
                 <li class="log-item" style="color: var(--text-muted); text-align: center; border:none; background:none;">待機中...</li>
             </ul>
         </div>
+        <!-- 隠しファイル入力(カメラ用) -->
+        <input type="file" id="hidden-camera-input" accept="image/*" capture="camera" style="display: none;">
     </main>
 
     <!-- 施設連携（チェックリスト）モーダル -->
@@ -369,9 +400,17 @@
         const facilityModal = document.getElementById('facility-modal');
         const btnSavePatients = document.getElementById('btn-save-patients');
         const btnCloseFacility = document.getElementById('btn-close-facility');
+        const cameraInput = document.getElementById('hidden-camera-input');
+
+        // APIのベースURL設定 (file:// で開いた場合は localhost:3000 を向く)
+        const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
 
         let watchId = null;
         let isTracking = false;
+
+        // セッション中の写真データ保持用: { patientId: [base64, base64, ...] }
+        let sessionPhotos = {};
+        let currentTargetPatientId = null;
 
         // 本番用施設マスタデータ (サーバーから動的に取得)
         let FACILITIES_DATA = [];
@@ -379,7 +418,7 @@
         // サーバーから施設・患者データを取得
         const loadFacilities = async () => {
             try {
-                const response = await fetch('/api/facilities');
+                const response = await fetch(`${API_BASE}/api/facilities`);
                 const result = await response.json();
                 if (result.success) {
                     FACILITIES_DATA = result.data;
@@ -527,6 +566,79 @@
                     }
                 });
             });
+
+            // 写真撮影ボタンのイベント
+            document.querySelectorAll('.btn-camera').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentTargetPatientId = e.target.closest('.btn-camera').dataset.id;
+                    cameraInput.click();
+                });
+            });
+        };
+
+        // カメラ入力の変更イベント（画像リサイズと保存）
+        cameraInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file || !currentTargetPatientId) return;
+
+            const base64 = await resizeImage(file, 800, 800); // 最大800pxに縮小
+            
+            if (!sessionPhotos[currentTargetPatientId]) sessionPhotos[currentTargetPatientId] = [];
+            sessionPhotos[currentTargetPatientId].push(base64);
+            
+            renderPhotoGallery(currentTargetPatientId);
+            cameraInput.value = ''; // 次回のためにリセット
+        });
+
+        const resizeImage = (file, maxWidth, maxHeight) => {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width;
+                        let height = img.height;
+                        if (width > height) {
+                            if (width > maxWidth) { height *= maxWidth / width; width = maxWidth; }
+                        } else {
+                            if (height > maxHeight) { width *= maxHeight / height; height = maxHeight; }
+                        }
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        resolve(canvas.toDataURL('image/jpeg', 0.8));
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            });
+        };
+
+        const renderPhotoGallery = (patientId) => {
+            const gallery = document.getElementById(`gallery-${patientId}`);
+            if (!gallery) return;
+            
+            gallery.innerHTML = '';
+            const photos = sessionPhotos[patientId] || [];
+            
+            photos.forEach((base64, index) => {
+                const div = document.createElement('div');
+                div.className = 'photo-thumb-container';
+                div.innerHTML = `
+                    <img src="${base64}" class="photo-thumb">
+                    <div class="photo-delete" onclick="removePhoto('${patientId}', ${index})">✕</div>
+                `;
+                gallery.appendChild(div);
+            });
+        };
+
+        window.removePhoto = (patientId, index) => {
+            if (sessionPhotos[patientId]) {
+                sessionPhotos[patientId].splice(index, 1);
+                renderPhotoGallery(patientId);
+            }
         };
 
         const openFacilityModal = (facility) => {
@@ -558,10 +670,22 @@
                             <label><input type="radio" name="walk-${p.id}" value="未実施" checked> 未実施</label>
                         </div>
                         <input type="text" class="reason-input" id="reason-${p.id}" placeholder="拒否の理由や備考を入力...">
+                        
+                        <div style="font-weight: 600; font-size: 0.9rem; margin-bottom: 8px;">📝 訪問メモ・詳細</div>
+                        <textarea class="notes-textarea" id="notes-${p.id}" placeholder="患者様の様子、申し送り事項など..."></textarea>
+                        
+                        <div class="photo-gallery-title">📸 写真撮影 (複数可)</div>
+                        <div class="photo-gallery" id="gallery-${p.id}"></div>
+                        <button class="btn-camera" data-id="${p.id}">
+                            <span>📷 写真を追加</span>
+                        </button>
                     </div>
                 </div>`;
                 patientListContainer.innerHTML += itemHTML;
             });
+
+            // セッション写真をクリア
+            sessionPhotos = {};
 
             // 動的に追加した要素に対するイベントリスナーの登録
             attachPatientItemEvents();
@@ -585,25 +709,25 @@
                 const name = cb.value;
                 const id = cb.dataset.id;
                 
-                // 選択された歩行訓練のラジオボタンを取得
+                // 歩行訓練
                 const walkStatus = document.querySelector(`input[name="walk-${id}"]:checked`).value;
-                let detail = `(歩行訓練: ${walkStatus}`;
                 
-                // 拒否の場合は理由も取得
-                if(walkStatus === '拒否') {
-                    const reason = document.getElementById(`reason-${id}`).value || '理由未記入';
-                    detail += ` - 理由: ${reason}`;
-                }
-                detail += ')';
+                // メモ
+                const notes = document.getElementById(`notes-${id}`).value;
+                
+                // 写真
+                const photos = sessionPhotos[id] || [];
 
-                logMessages.push(`${name} ${walkStatus !== '未実施' ? detail : ''}`);
+                logMessages.push(`${name} (メモあり/写真 ${photos.length}点)`);
                 
                 // データベース送信用データ作成
                 visitsData.push({
                     time: timeStr,
                     location: `${currentFacilityName} (${name} 様)`,
                     duration: 'チェックイン済み',
-                    category: '訪問実績'
+                    category: '訪問実績',
+                    notes: notes,
+                    images: photos
                 });
             });
             
@@ -614,7 +738,7 @@
                 btnSavePatients.disabled = true;
 
                 try {
-                    const response = await fetch('/api/save-visit', {
+                    const response = await fetch(`${API_BASE}/api/save-visit`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
@@ -708,6 +832,15 @@
             }, 1500);
         });
 
+        // ==================================
+        // 位置情報検知の微調整パラメータ
+        // ==================================
+        const GEO_SETTINGS = {
+            maxAccuracy: 100,      // これ以上精度が悪い(m)ときは無視する
+            arrivalDistance: 50,    // 到着と判定する距離(m)
+            departureDistance: 100  // 退出と判定する距離(m)
+        };
+
         // 位置取得成功時
         const successCallback = (position) => {
             if (window.simInterval) return; // シミュレーション中は本物のGPSは無視する
@@ -721,23 +854,26 @@
             document.getElementById('val-acc').innerText = acc.toFixed(1) + ' m';
             document.getElementById('val-time').innerText = new Date(position.timestamp).toLocaleTimeString('ja-JP');
 
-            // 精度が悪すぎる場合（例: 100m以上ズレている）は誤検知を防ぐためスキップ
-            if (acc > 100) return;
+            // 精度が悪すぎる場合は誤検知を防ぐためスキップ
+            if (acc > GEO_SETTINGS.maxAccuracy) {
+                addLog(`⚠️ 精度が低いため位置判定をスキップ (誤差 ${Math.floor(acc)}m)`, "error");
+                return;
+            }
 
             // 本物のジオフェンス判定
             FACILITIES_DATA.forEach(facility => {
                 const dist = calculateDistance(lat, lng, facility.lat, facility.lng);
                 
-                // 50メートル以内に入った ＆ まだ「到着」扱いになっていない場合
-                if (dist <= 50 && !facility.isInside) {
+                // 設定距離以内に入った ＆ まだ「到着」扱いになっていない場合
+                if (dist <= GEO_SETTINGS.arrivalDistance && !facility.isInside) {
                     facility.isInside = true;
                     addLog(`🎯 [自動検知] ${facility.name} への到着をGPSで検知しました！（誤差 ${Math.floor(dist)}m）`, "success");
                     
                     // 自動で施設のモーダルを開く
                     openFacilityModal(facility);
                 } 
-                // 100メートル以上離れた場合、次回再び入れるようにリセット
-                else if (dist > 100 && facility.isInside) {
+                // 設定距離以上離れた場合、次回再び入れるようにリセット
+                else if (dist > GEO_SETTINGS.departureDistance && facility.isInside) {
                     facility.isInside = false;
                     addLog(`🚶 [退出検知] ${facility.name} エリアから離れました。また訪れた際に検知します。`, "success");
                 }

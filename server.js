@@ -2,6 +2,8 @@ const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
 const sqlite3 = require('sqlite3').verbose();
+const fs = require('fs');
+const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -12,6 +14,14 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
         console.error('データベースの接続に失敗しました:', err.message);
     } else {
         console.log('✅ SQLiteデータベースに接続しました。');
+        
+        // uploads フォルダの作成
+        const uploadDir = path.join(__dirname, 'uploads');
+        if (!fs.existsSync(uploadDir)){
+            fs.mkdirSync(uploadDir);
+            console.log('✅ uploadsディレクトリを作成しました。');
+        }
+
         // visits テーブルの作成
         db.run(`CREATE TABLE IF NOT EXISTS visits (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -21,15 +31,26 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
             location TEXT,
             duration TEXT,
             category TEXT,
+            notes TEXT,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )`, (err) => {
             if (err) {
                 console.error('テーブルの作成に失敗しました:', err.message);
             } else {
                 console.log('✅ visitsテーブルの準備が完了しました。');
-                // 既存のテーブルにcategoryカラムがない場合の追加処理（エラーは無視）
                 db.run(`ALTER TABLE visits ADD COLUMN category TEXT`, () => {});
+                db.run(`ALTER TABLE visits ADD COLUMN notes TEXT`, () => {});
             }
+        });
+
+        // visit_images テーブルの作成
+        db.run(`CREATE TABLE IF NOT EXISTS visit_images (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            visit_id INTEGER,
+            image_path TEXT,
+            FOREIGN KEY (visit_id) REFERENCES visits(id)
+        )`, (err) => {
+            if (err) console.error('visit_imagesテーブルの作成に失敗しました:', err.message);
         });
 
         // 施設(facilities)と患者(patients)テーブルの作成
@@ -56,8 +77,8 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
                         const stmtFac = db.prepare(`INSERT INTO facilities (id, name, lat, lng) VALUES (?, ?, ?, ?)`);
                         const stmtPat = db.prepare(`INSERT INTO patients (id, facility_id, name, room) VALUES (?, ?, ?, ?)`);
                         
-                        stmtFac.run('f1', 'さくら老人ホーム', 35.689500, 139.691700);
-                        stmtFac.run('f2', 'ひまわりケアセンター', 35.681236, 139.767125);
+                        stmtFac.run('f1', 'さくら老人ホーム', 35.119736, 136.959581);
+                        stmtFac.run('f2', 'ひまわりケアセンター', 35.122000, 136.955000);
                         
                         stmtPat.run('1', 'f1', '山田 太郎 様', '101号室 / 定期往診・リハビリ');
                         stmtPat.run('2', 'f1', '佐藤 花子 様', '202号室 / 採血・点滴設定なし');
@@ -71,10 +92,12 @@ const db = new sqlite3.Database('./database.sqlite', (err) => {
         });
     }
 });
-// ミドルウェアの設定（別ドメインからのアクセス許可とJSONパース）
+// ミドルウェアの設定（JSONのサイズ制限を緩和し、画像を扱えるようにする）
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(__dirname)); // ローカルHTMLファイルの配信用
+app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // アップロード画像の配信用
 
 // ==========================================
 // ⚠️ 以下にお使いのGmail情報を入力してください
@@ -90,6 +113,15 @@ const transporter = nodemailer.createTransport({
         pass: GMAIL_APP_PASSWORD
     }
 });
+
+// 画像保存用のユーティリティ関数
+const saveBase64Image = (base64Data, filename) => {
+    const base64Image = base64Data.replace(/^data:image\/\w+;base64,/, '');
+    const buffer = Buffer.from(base64Image, 'base64');
+    const filePath = path.join(__dirname, 'uploads', filename);
+    fs.writeFileSync(filePath, buffer);
+    return `/uploads/${filename}`;
+};
 
 // 日報送信用のAPIエンドポイント
 app.post('/api/send-report', async (req, res) => {
@@ -133,13 +165,33 @@ app.post('/api/save-visit', (req, res) => {
     }
 
     try {
-        const stmt = db.prepare(`INSERT INTO visits (staff_name, visit_date, time_range, location, duration, category) VALUES (?, ?, ?, ?, ?, ?)`);
-        visits.forEach(v => {
-            stmt.run(staffName, date, v.time, v.location, v.duration, v.category || '未設定');
+        db.serialize(() => {
+            const stmt = db.prepare(`INSERT INTO visits (staff_name, visit_date, time_range, location, duration, category, notes) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+            const imgStmt = db.prepare(`INSERT INTO visit_images (visit_id, image_path) VALUES (?, ?)`);
+            
+            visits.forEach(v => {
+                stmt.run(staffName, date, v.time, v.location, v.duration, v.category || '未設定', v.notes || '', function(err) {
+                    if (err) {
+                        console.error('Visit保存エラー:', err);
+                        return;
+                    }
+                    const visitId = this.lastID;
+                    
+                    // 画像の保存処理があれば実行
+                    if (v.images && Array.isArray(v.images)) {
+                        v.images.forEach((base64, index) => {
+                            const filename = `visit_${visitId}_${index}_${Date.now()}.jpg`;
+                            const photoPath = saveBase64Image(base64, filename);
+                            imgStmt.run(visitId, photoPath);
+                        });
+                    }
+                });
+            });
+            stmt.finalize();
+            imgStmt.finalize();
         });
-        stmt.finalize();
         
-        console.log(`✅ [${staffName}] スタッフアプリから直接履歴を保存しました。`);
+        console.log(`✅ [${staffName}] スタッフアプリから直接履歴(画像/メモ含む)を保存しました。`);
         res.status(200).json({ success: true, message: 'データベースへの保存が完了しました。' });
     } catch (error) {
         console.error('❌ 保存エラー:', error.message);
@@ -147,34 +199,42 @@ app.post('/api/save-visit', (req, res) => {
     }
 });
 
-// 訪問履歴の検索API
+// 訪問履歴の検索API (画像データも結合して取得)
 app.get('/api/visits', (req, res) => {
     const { staffName, date, patientName } = req.query;
     
-    let query = `SELECT * FROM visits WHERE 1=1`;
+    let query = `SELECT v.*, GROUP_CONCAT(i.image_path) as images 
+                 FROM visits v 
+                 LEFT JOIN visit_images i ON v.id = i.visit_id 
+                 WHERE 1=1`;
     const params = [];
 
     if (staffName) {
-        query += ` AND staff_name = ?`;
+        query += ` AND v.staff_name = ?`;
         params.push(staffName);
     }
     if (date) {
-        query += ` AND visit_date = ?`;
+        query += ` AND v.visit_date = ?`;
         params.push(date);
     }
     if (patientName) {
-        query += ` AND location LIKE ?`;
+        query += ` AND v.location LIKE ?`;
         params.push(`%${patientName}%`);
     }
 
-    query += ` ORDER BY visit_date DESC, time_range ASC`;
+    query += ` GROUP BY v.id ORDER BY v.visit_date DESC, v.time_range ASC`;
 
     db.all(query, params, (err, rows) => {
         if (err) {
             console.error('❌ データベース検索エラー:', err.message);
             res.status(500).json({ success: false, message: 'データベース検索エラー', error: err.message });
         } else {
-            res.status(200).json({ success: true, count: rows.length, data: rows });
+            // images を文字列から配列に変換
+            const formattedRows = rows.map(r => ({
+                ...r,
+                images: r.images ? r.images.split(',') : []
+            }));
+            res.status(200).json({ success: true, count: formattedRows.length, data: formattedRows });
         }
     });
 });
@@ -221,6 +281,9 @@ app.post('/api/facilities', (req, res) => {
     stmt.run(id, name, lat, lng, function(err) {
         if (err) {
             console.error('施設追加エラー:', err.message);
+            if (err.message.includes('UNIQUE')) {
+                return res.status(400).json({ success: false, message: 'この施設IDは既に使用されています。別のID（例: f3 など）をお試しください。' });
+            }
             return res.status(500).json({ success: false, message: 'データベース保存エラー', error: err.message });
         }
         res.status(200).json({ success: true, message: '施設を追加しました。' });
@@ -238,11 +301,38 @@ app.post('/api/patients', (req, res) => {
     stmt.run(id, facility_id, name, room, function(err) {
         if (err) {
             console.error('患者追加エラー:', err.message);
+            if (err.message.includes('UNIQUE')) {
+                return res.status(400).json({ success: false, message: 'この患者IDは既に使用されています。別のIDを指定してください。' });
+            }
             return res.status(500).json({ success: false, message: 'データベース保存エラー', error: err.message });
         }
         res.status(200).json({ success: true, message: '患者を追加しました。' });
     });
     stmt.finalize();
+});
+
+// 施設削除API
+app.delete('/api/facilities/:id', (req, res) => {
+    const { id } = req.params;
+    db.run(`DELETE FROM facilities WHERE id = ?`, [id], function(err) {
+        if (err) {
+            console.error('施設削除エラー:', err.message);
+            return res.status(500).json({ success: false, message: '削除エラー' });
+        }
+        res.status(200).json({ success: true, message: '施設を削除しました。' });
+    });
+});
+
+// 患者削除API
+app.delete('/api/patients/:id', (req, res) => {
+    const { id } = req.params;
+    db.run(`DELETE FROM patients WHERE id = ?`, [id], function(err) {
+        if (err) {
+            console.error('患者削除エラー:', err.message);
+            return res.status(500).json({ success: false, message: '削除エラー' });
+        }
+        res.status(200).json({ success: true, message: '患者を削除しました。' });
+    });
 });
 
 // サーバーの起動
