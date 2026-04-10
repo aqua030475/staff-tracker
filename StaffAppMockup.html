@@ -806,8 +806,8 @@
             const now = new Date();
             const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-            // モックなのでスタッフ名は固定
-            const staffName = "山田 太郎 医師";
+            // 選択されたスタッフ名を使用
+            const staffName = currentStaff ? currentStaff.name : "不明なスタッフ";
             
             checkboxes.forEach(cb => {
                 const name = cb.value;
@@ -914,6 +914,11 @@
                 document.getElementById('val-acc').innerText = '5.0 m (SIM)';
                 document.getElementById('val-time').innerText = new Date().toLocaleTimeString('ja-JP');
 
+                // シミュレーション中の座標もサーバーへ報告する
+                if (isTracking && currentStaff) {
+                    sendLocationToServer(currentPos.lat, currentPos.lng);
+                }
+
                 const dist = calculateDistance(currentPos.lat, currentPos.lng, target.lat, target.lng);
                 
                 if (dist > 50) {
@@ -958,29 +963,56 @@
             document.getElementById('val-acc').innerText = acc.toFixed(1) + ' m';
             document.getElementById('val-time').innerText = new Date(position.timestamp).toLocaleTimeString('ja-JP');
 
+            // サーバーへ現在地を報告（自動追跡の本番機能）
+            if (isTracking && currentStaff) {
+                sendLocationToServer(lat, lng);
+            }
+
             // 精度が悪すぎる場合は誤検知を防ぐためスキップ
             if (acc > GEO_SETTINGS.maxAccuracy) {
                 addLog(`⚠️ 精度が低いため位置判定をスキップ (誤差 ${Math.floor(acc)}m)`, "error");
                 return;
             }
 
-            // 本物のジオフェンス判定
+            // 本物のジオフェンス判定 (施設)
             FACILITIES_DATA.forEach(facility => {
+                if (!facility.lat || !facility.lng || facility.id === 'home') return;
                 const dist = calculateDistance(lat, lng, facility.lat, facility.lng);
                 
-                // 設定距離以内に入った ＆ まだ「到着」扱いになっていない場合
                 if (dist <= GEO_SETTINGS.arrivalDistance && !facility.isInside) {
                     facility.isInside = true;
                     addLog(`🎯 [自動検知] ${facility.name} への到着をGPSで検知しました！（誤差 ${Math.floor(dist)}m）`, "success");
-                    
-                    // 自動で施設のモーダルを開く
                     openFacilityModal(facility);
                 } 
-                // 設定距離以上離れた場合、次回再び入れるようにリセット
                 else if (dist > GEO_SETTINGS.departureDistance && facility.isInside) {
                     facility.isInside = false;
-                    addLog(`🚶 [退出検知] ${facility.name} エリアから離れました。また訪れた際に検知します。`, "success");
+                    addLog(`🚶 [退出検知] ${facility.name} エリアから離れました。`, "success");
                 }
+            });
+
+            // 本物のジオフェンス判定 (個人宅)
+            FACILITIES_DATA.forEach(facility => {
+                facility.patients.forEach(patient => {
+                    if (!patient.lat || !patient.lng) return;
+                    const dist = calculateDistance(lat, lng, patient.lat, patient.lng);
+                    
+                    if (dist <= GEO_SETTINGS.arrivalDistance && !patient.isInside) {
+                        patient.isInside = true;
+                        addLog(`🎯 [自動検知] ${patient.name} 様宅への到着をGPSで検知しました！`, "success");
+                        
+                        // 個人宅用の簡易施設オブジェクトを作成してモーダルを開く
+                        const virtualFacility = {
+                            id: `home_${patient.id}`,
+                            name: `${patient.name} 様宅 (自宅)`,
+                            patients: [patient]
+                        };
+                        openFacilityModal(virtualFacility);
+                    }
+                    else if (dist > GEO_SETTINGS.departureDistance && patient.isInside) {
+                        patient.isInside = false;
+                        addLog(`🚶 [退出検知] ${patient.name} 様宅から離れました。`, "success");
+                    }
+                });
             });
         };
 
@@ -1005,6 +1037,29 @@
             }
             addLog(errorMsg, "error");
         };
+
+        // サーバーへ位置情報を送信
+        let lastReportTime = 0;
+        async function sendLocationToServer(lat, lng) {
+            const now = Date.now();
+            if (now - lastReportTime < 5000) return; // デモ・テスト用に5秒間隔に短縮
+
+            lastReportTime = now;
+            try {
+                await fetch(`${API_BASE}/api/location`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        staff_id: currentStaff.id,
+                        staff_name: currentStaff.name,
+                        lat: lat,
+                        lng: lng
+                    })
+                });
+            } catch (e) {
+                console.error('位置情報送信失敗:', e);
+            }
+        }
 
     </script>
 </body>

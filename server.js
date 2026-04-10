@@ -11,7 +11,9 @@ const PORT = process.env.PORT || 3000;
 // PostgreSQL データベースの設定 (Neon)
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL || 'postgresql://neondb_owner:npg_5GElUHcJ0jVZ@ep-empty-scene-a4ickb0p.us-east-1.aws.neon.tech/neondb?sslmode=require',
-    ssl: { rejectUnauthorized: false }
+    ssl: { rejectUnauthorized: false },
+    statement_timeout: 10000, // クエリが10秒以上かかる場合は強制終了（ハング防止）
+    connectionTimeoutMillis: 5000 // 接続待ちが5秒以上の場合はタイムアウト
 });
 
 // 初期化処理
@@ -20,12 +22,7 @@ async function initDB() {
         const client = await pool.connect();
         console.log('✅ PostgreSQLデータベースに接続しました。');
         
-        // uploads フォルダの作成
-        const uploadDir = path.join(__dirname, 'uploads');
-        if (!fs.existsSync(uploadDir)){
-            fs.mkdirSync(uploadDir);
-            console.log('✅ uploadsディレクトリを作成しました。');
-        }
+        // (注: 画像はEphemeral File System対策としてDBに直接保存するように変更)
 
         // テーブル作成
         await client.query(`CREATE TABLE IF NOT EXISTS visits (
@@ -50,19 +47,33 @@ async function initDB() {
         await client.query(`CREATE TABLE IF NOT EXISTS facilities (
             id TEXT PRIMARY KEY,
             name TEXT,
-            lat REAL,
-            lng REAL,
+            lat DOUBLE PRECISION,
+            lng DOUBLE PRECISION,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
+
+        // カラム型の移行 (REAL -> DOUBLE PRECISION)
+        try {
+            await client.query("ALTER TABLE facilities ALTER COLUMN lat TYPE DOUBLE PRECISION");
+            await client.query("ALTER TABLE facilities ALTER COLUMN lng TYPE DOUBLE PRECISION");
+        } catch (e) { }
         
         await client.query(`CREATE TABLE IF NOT EXISTS patients (
             id TEXT PRIMARY KEY,
             facility_id TEXT,
             name TEXT,
             room TEXT,
+            lat DOUBLE PRECISION,
+            lng DOUBLE PRECISION,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE CASCADE
         )`);
+
+        // 既存テーブルへのカラム追加 (Migration)
+        try {
+            await client.query("ALTER TABLE patients ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION");
+            await client.query("ALTER TABLE patients ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION");
+        } catch (e) { /* すでにある場合は無視 */ }
         
         await client.query(`CREATE TABLE IF NOT EXISTS staff (
             id TEXT PRIMARY KEY,
@@ -76,14 +87,30 @@ async function initDB() {
             value TEXT
         )`);
 
-        // 初回起動時のスタッフ追加
+        // 初回起動時の初期データ追加
         const staffRes = await client.query("SELECT COUNT(*) FROM staff");
         if (parseInt(staffRes.rows[0].count) === 0) {
             await client.query("INSERT INTO staff (id, name, role) VALUES ($1, $2, $3)", ['s1', '山田 太郎 医師', '医師']);
-            await client.query("INSERT INTO staff (id, name, role) VALUES ($2, $3, $4)", ['s2', '伊藤 花子 看護師', '看護師']);
+            await client.query("INSERT INTO staff (id, name, role) VALUES ($1, $2, $3)", ['s2', '伊藤 花子 看護師', '看護師']);
+        }
+        
+        // 「自宅」施設の追加
+        const homeRes = await client.query("SELECT COUNT(*) FROM facilities WHERE id = 'home'");
+        if (parseInt(homeRes.rows[0].count) === 0) {
+            await client.query("INSERT INTO facilities (id, name, lat, lng) VALUES ($1, $2, $3, $4)", ['home', '自宅', 0, 0]);
         }
 
         client.release();
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS locations (
+                id SERIAL PRIMARY KEY,
+                staff_id TEXT,
+                staff_name TEXT,
+                lat DOUBLE PRECISION,
+                lng DOUBLE PRECISION,
+                timestamp TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
         console.log('✅ 全てのテーブルの準備が完了しました。');
     } catch (err) {
         console.error('❌ データベースの初期化に失敗しました:', err.message);
@@ -96,7 +123,7 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(__dirname)); // ローカルHTMLファイルの配信用
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // アップロード画像の配信用
+// ⚠️ 注: uploadsフォルダのマウントは廃止（直接DBからBase64提供に変更）
 
 // --- ページ（HTML）のルート設定 ---
 // ブラウザで https://xxx.onrender.com/ にアクセスしたとき
@@ -115,10 +142,10 @@ app.get('/staff', (req, res) => {
 });
 
 // ==========================================
-// ⚠️ 以下にお使いのGmail情報を入力してください
+// 環境変数（Renderなど）で上書き可能な設定
 // ==========================================
-const GMAIL_USER = 'aqua030475@gmail.com'; // 例: admin@gmail.com
-const GMAIL_APP_PASSWORD = 'mlgn nvuw hxvj dsso'; // 例: abcd efgh ijkl mnop (スペースはあってもなくても動作します)
+const GMAIL_USER = process.env.GMAIL_USER || 'aqua030475@gmail.com';
+const GMAIL_APP_PASSWORD = process.env.GMAIL_APP_PASSWORD || 'mlgn nvuw hxvj dsso';
 
 // メール送信用のトランスポーター設定
 const transporter = nodemailer.createTransport({
@@ -128,15 +155,6 @@ const transporter = nodemailer.createTransport({
         pass: GMAIL_APP_PASSWORD
     }
 });
-
-// 画像保存用のユーティリティ関数
-const saveBase64Image = (base64Data, filename) => {
-    const base64Image = base64Data.replace(/^data:image\/\w+;base64,/, '');
-    const buffer = Buffer.from(base64Image, 'base64');
-    const filePath = path.join(__dirname, 'uploads', filename);
-    fs.writeFileSync(filePath, buffer);
-    return `/uploads/${filename}`;
-};
 
 // 日報送信用のAPIエンドポイント
 app.post('/api/send-report', async (req, res) => {
@@ -191,15 +209,13 @@ app.post('/api/save-visit', async (req, res) => {
             );
             const visitId = visitResult.rows[0].id;
             
-            // 画像の保存処理があれば実行
+            // 画像の保存処理があれば実行 (Base64を直接DBに保存する)
             if (v.images && Array.isArray(v.images)) {
                 for (let index = 0; index < v.images.length; index++) {
                     const base64 = v.images[index];
-                    const filename = `visit_${visitId}_${index}_${Date.now()}.jpg`;
-                    const photoPath = saveBase64Image(base64, filename);
                     await client.query(
                         "INSERT INTO visit_images (visit_id, image_path) VALUES ($1, $2)",
-                        [visitId, photoPath]
+                        [visitId, base64]
                     );
                 }
             }
@@ -207,6 +223,35 @@ app.post('/api/save-visit', async (req, res) => {
         
         await client.query('COMMIT');
         console.log(`✅ [${staffName}] スタッフアプリから直接履歴(画像/メモ含む)を保存しました。`);
+        
+        // Webhook連携 (Google Spreadsheet等への送信)
+        try {
+            const settingsResult = await pool.query("SELECT value FROM settings WHERE key = 'google_sheet_webhook_url'");
+            if (settingsResult.rows.length > 0 && settingsResult.rows[0].value) {
+                const webhookUrl = settingsResult.rows[0].value;
+                // Node 20.x以降はfetchがデフォルト利用可能
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        staffName,
+                        date,
+                        visits: visits.map(v => ({
+                            time: v.time,
+                            location: v.location,
+                            duration: v.duration,
+                            category: v.category,
+                            notes: v.notes,
+                            imageCount: v.images ? v.images.length : 0
+                        }))
+                    })
+                });
+                console.log(`✅ Webhookを送信しました: ${webhookUrl}`);
+            }
+        } catch (webhookErr) {
+            console.error('❌ Webhookの送信に失敗しました:', webhookErr.message);
+        }
+
         res.status(200).json({ success: true, message: 'データベースへの保存が完了しました。' });
     } catch (error) {
         await client.query('ROLLBACK');
@@ -290,6 +335,16 @@ app.get('/api/facilities', async (req, res) => {
     }
 });
 
+// 全患者の一覧を取得するAPI
+app.get('/api/patients', async (req, res) => {
+    try {
+        const result = await pool.query("SELECT * FROM patients ORDER BY created_at ASC");
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (err) {
+        res.status(500).json({ success: false, message: '患者一覧取得エラー' });
+    }
+});
+
 // 新規施設の追加API
 app.post('/api/facilities', async (req, res) => {
     const { id, name, lat, lng } = req.body;
@@ -330,18 +385,46 @@ app.post('/api/patients', async (req, res) => {
     }
 });
 
-// 患者更新（所属施設の変更など）API
+// 患者更新（所属施設の変更・名前・備考など）API
 app.put('/api/patients/:id', async (req, res) => {
     const { id } = req.params;
-    const { facility_id } = req.body;
+    let { facility_id, name, room, lat, lng } = req.body;
+
     try {
+        // もし施設が変更され、かつ新しい座標が直接指定されていない場合、移動先施設から現在の座標を取得して適用する
+        if (facility_id && lat === undefined && lng === undefined) {
+            const facRes = await pool.query("SELECT lat, lng FROM facilities WHERE id = $1", [facility_id]);
+            if (facRes.rows.length > 0) {
+                lat = facRes.rows[0].lat;
+                lng = facRes.rows[0].lng;
+                console.log(`📍 患者 [${id}] の移動に伴い、施設 [${facility_id}] の座標 (${lat}, ${lng}) を自動適用します。`);
+            }
+        }
+
         await pool.query(
-            "UPDATE patients SET facility_id = $1 WHERE id = $2",
-            [facility_id, id]
+            "UPDATE patients SET facility_id = COALESCE($1, facility_id), name = COALESCE($2, name), room = COALESCE($3, room), lat = COALESCE($4, lat), lng = COALESCE($5, lng) WHERE id = $6",
+            [facility_id, name, room, lat || null, lng || null, id]
         );
         res.status(200).json({ success: true, message: '患者情報を更新しました。' });
     } catch (err) {
-        console.error('患者更新エラー:', err.message);
+        console.error('❌ 患者更新エラー:', err.message);
+        res.status(500).json({ success: false, message: '更新エラー' });
+    }
+});
+
+// 施設更新 API
+app.put('/api/facilities/:id', async (req, res) => {
+    const { id } = req.params;
+    const { name, lat, lng } = req.body;
+    console.log(`🌐 施設更新リクエスト: ID=${id}, Lat=${lat}, Lng=${lng}`);
+    try {
+        const result = await pool.query(
+            "UPDATE facilities SET name = COALESCE($1, name), lat = COALESCE($2, lat), lng = COALESCE($3, lng) WHERE id = $4",
+            [name, lat, lng, id]
+        );
+        res.status(200).json({ success: true, message: '施設情報を更新しました。' });
+    } catch (err) {
+        console.error('❌ 施設更新エラー:', err.message);
         res.status(500).json({ success: false, message: '更新エラー' });
     }
 });
@@ -365,6 +448,42 @@ app.delete('/api/patients/:id', async (req, res) => {
         res.status(200).json({ success: true, message: '患者を削除しました。' });
     } catch (err) {
         res.status(500).json({ success: false, message: '削除エラー' });
+    }
+});
+
+// --- 位置情報（ルート）API ---
+
+// 現在地を保存
+app.post('/api/location', async (req, res) => {
+    const { staff_id, staff_name, lat, lng } = req.body;
+    try {
+        await pool.query(
+            "INSERT INTO locations (staff_id, staff_name, lat, lng) VALUES ($1, $2, $3, $4)",
+            [staff_id, staff_name, lat, lng]
+        );
+        res.status(200).json({ success: true });
+    } catch (err) {
+        console.error('位置情報保存エラー:', err.message);
+        res.status(500).json({ success: false });
+    }
+});
+
+// 指定したスタッフ・日のルートを取得
+app.get('/api/location', async (req, res) => {
+    const { staff_id, date } = req.query;
+    try {
+        const query = `
+            SELECT lat, lng, timestamp 
+            FROM locations 
+            WHERE staff_id = $1 
+            AND (timestamp AT TIME ZONE 'Asia/Tokyo')::date = $2::date 
+            ORDER BY timestamp ASC
+        `;
+        const result = await pool.query(query, [staff_id, date]);
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('位置情報取得エラー:', err.message);
+        res.status(500).json({ success: false });
     }
 });
 

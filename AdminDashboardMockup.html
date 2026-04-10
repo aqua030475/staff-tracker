@@ -230,6 +230,30 @@
             100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
         }
 
+        /* Location Picking Overlay */
+        #map-picking-overlay {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 12px 24px;
+            border-radius: 40px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            display: none;
+            align-items: center;
+            gap: 12px;
+            border: 2px solid var(--primary);
+            font-weight: 600;
+            animation: slideDown 0.3s ease;
+        }
+
+        @keyframes slideDown {
+            from { transform: translate(-50%, -40px); opacity: 0; }
+            to { transform: translate(-50%, 0); opacity: 1; }
+        }
+
         /* Modal */
         .modal-overlay {
             position: fixed;
@@ -466,7 +490,14 @@
                     現在地と移動ルート
                 </div>
                 <!-- ここにマップが表示されます -->
-                <div id="map"></div>
+                <div style="position: relative; flex: 1; display: flex; flex-direction: column;">
+                    <div id="map-picking-overlay">
+                        <span style="font-size: 1.2rem;">📍</span>
+                        <span id="picking-target-name">施設名</span> の場所を、地図上でクリックしてください
+                        <button onclick="exitPickingMode()" style="background:#f1f5f9; border:none; padding:4px 10px; border-radius:4px; margin-left:8px; cursor:pointer; font-size:0.8rem;">キャンセル</button>
+                    </div>
+                    <div id="map" style="flex: 1;"></div>
+                </div>
             </div>
 
             <div class="timeline-card">
@@ -614,9 +645,29 @@
                     <input type="text" id="manage-search-input" placeholder="施設名・患者名で絞り込み...">
                     <i class="fas fa-search">🔍</i>
                 </div>
-                </div>
-                <div id="manage-tree-container" style="padding-bottom: 40px;">
-                    <!-- JSでアコーディオン形式で生成 -->
+                
+                <div class="manage-split-view" style="display: flex; gap: 24px; margin-top: 20px; min-height: 400px;">
+                    <!-- 左カラム: 施設 -->
+                    <div style="flex: 4; display: flex; flex-direction: column;">
+                        <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px; display: flex; justify-content: space-between;">
+                            <span>🏠 施設一覧</span>
+                            <span id="fac-count-badge" style="background:#e2e8f0; padding:2px 8px; border-radius:10px; font-size:0.75rem;">0</span>
+                        </h4>
+                        <div id="manage-fac-container" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+                            <!-- JSで生成 -->
+                        </div>
+                    </div>
+                    
+                    <!-- 右カラム: 患者 -->
+                    <div style="flex: 6; display: flex; flex-direction: column; border-left: 1px solid var(--border); padding-left: 24px;">
+                        <h4 style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px; display: flex; justify-content: space-between;">
+                            <span>👤 全患者一覧 & 紐付け管理</span>
+                            <span id="pat-count-badge" style="background:#e2e8f0; padding:2px 8px; border-radius:10px; font-size:0.75rem;">0</span>
+                        </h4>
+                        <div id="manage-pat-container" style="overflow-y: auto; flex: 1; display: flex; flex-direction: column; gap: 10px;">
+                            <!-- JSで生成 -->
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -698,6 +749,51 @@
         </div>
     </div>
 
+    <!-- Edit Modal -->
+    <div class="modal-overlay" id="edit-modal">
+        <div class="modal-content" style="max-width: 450px;">
+            <div class="modal-header">
+                <div class="modal-title" id="edit-modal-title">情報の編集</div>
+                <button class="btn-close" id="btn-close-edit-modal">&times;</button>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 16px; padding-top: 10px;">
+                <input type="hidden" id="edit-target-id">
+                <input type="hidden" id="edit-target-type">
+
+                <div id="edit-facility-fields">
+                    <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">施設名</label>
+                    <input type="text" id="edit-facility-name" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px;">
+                    
+                    <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">所在地（住所）から座標を再計算</label>
+                    <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                        <input type="text" id="edit-facility-address" placeholder="住所を入力" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 8px;">
+                        <button type="button" class="btn-primary" id="btn-edit-geocode" style="background-color: var(--secondary); white-space: nowrap; font-size: 0.85rem; padding: 0 12px;">🔍 検索</button>
+                    </div>
+                    
+                    <div style="display: flex; gap: 8px;">
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 0.75rem; margin-bottom: 2px;">緯度</label>
+                            <input type="number" step="0.000001" id="edit-facility-lat" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px;">
+                        </div>
+                        <div style="flex: 1;">
+                            <label style="display: block; font-size: 0.75rem; margin-bottom: 2px;">経度</label>
+                            <input type="number" step="0.000001" id="edit-facility-lng" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px;">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="edit-patient-fields" style="display: none;">
+                    <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">患者名</label>
+                    <input type="text" id="edit-patient-name" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px;">
+                    <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">住所・部屋番号・備考</label>
+                    <input type="text" id="edit-patient-room" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px;">
+                </div>
+
+                <button class="btn-primary" id="btn-save-edit" style="padding: 12px; font-weight: 600; margin-top: 10px;">💾 変更を保存する</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
     <script>
@@ -706,10 +802,29 @@
 
         // マップの初期化（名古屋市瑞穂区白砂町を基準に設定）
         const map = L.map('map').setView([35.119736, 136.959581], 15);
-        // モダンでクリーンな地図タイル（CartoDB Voyager）を使用
-        L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        }).addTo(map);
+        
+        // Googleマップ タイルレイヤーの定義
+        const googleRoadmap = L.tileLayer('https://{s}.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '&copy; Google Maps'
+        });
+
+        const googleSatellite = L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+            maxZoom: 20,
+            subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+            attribution: '&copy; Google Maps'
+        });
+
+        // デフォルトで通常地図を表示
+        googleRoadmap.addTo(map);
+
+        // レイヤー切り替えコントロールの追加
+        const baseMaps = {
+            "通常地図": googleRoadmap,
+            "衛星写真": googleSatellite
+        };
+        L.control.layers(baseMaps).addTo(map);
 
         // マップクリックイベントの購読（施設登録用）
         map.on('click', (e) => {
@@ -852,28 +967,22 @@
         // スタッフ選択時の処理（マップとタイムラインの更新）
         const selectStaff = async (staff) => {
             currentStaff = staff;
+            window.hasInitiallyZoomed = false;
             document.getElementById('timeline-title').innerText = `${staff.name} の本日のルート`;
 
-            // マップ描画（モックのまま）
-            if (currentPolyline) map.removeLayer(currentPolyline);
-            currentMarkers.forEach(m => map.removeLayer(m));
-            currentMarkers = [];
-            currentPolyline = L.polyline(staff.route, {color: '#0ea5e9', weight: 4, opacity: 0.7}).addTo(map);
-            staff.route.forEach((coords, i) => {
-                const isCurrent = i === staff.route.length - 1;
-                const markerHtml = `<div style="background-color: ${isCurrent ? '#10b981' : '#fff'}; border: 3px solid ${isCurrent ? '#fff' : '#0ea5e9'}; width: 20px; height: 20px; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.3);"></div>`;
-                const customIcon = L.divIcon({ html: markerHtml, className: '', iconSize: [20, 20], iconAnchor: [10, 10] });
-                const marker = L.marker(coords, {icon: customIcon}).addTo(map);
-                if(isCurrent) marker.bindPopup(`<b>${staff.name}</b><br>現在地`).openPopup();
-                currentMarkers.push(marker);
-            });
-            map.fitBounds(currentPolyline.getBounds(), { padding: [50, 50] });
+            const today = new Date().toISOString().split('T')[0];
+
+            // 📍 走行ルート描画（サーバーの本物データを取得）
+            await refreshStaffRoute(staff.id, today);
+            
+            // 定期更新タイマーの設定
+            if (window.routeRefreshTimer) clearInterval(window.routeRefreshTimer);
+            window.routeRefreshTimer = setInterval(() => refreshStaffRoute(staff.id, today), 10000); // テスト用に10秒ごとに更新短縮
 
             // タイムラインの生成（サーバーから実データを取得）
             const timelineContainer = document.getElementById('timeline-container');
             timelineContainer.innerHTML = '<div style="text-align:center; color: var(--text-muted); padding: 20px;">読み込み中...</div>';
 
-            const today = new Date().toISOString().split('T')[0];
             try {
                 const response = await fetch(`${API_BASE}/api/visits?staffName=${encodeURIComponent(staff.name)}&date=${today}`);
                 const result = await response.json();
@@ -901,8 +1010,17 @@
                         `;
                         timelineContainer.appendChild(div);
                     });
+                    
+                    // 日報生成用にデータを保持
+                    currentStaff.timeline = result.data.map(d => ({
+                        time: d.time_range,
+                        location: d.location,
+                        duration: d.duration,
+                        category: d.category
+                    }));
                 } else {
                     timelineContainer.innerHTML = '<div style="text-align:center; color: var(--text-muted); padding: 20px;">本日の訪問記録はまだありません</div>';
+                    currentStaff.timeline = [];
                 }
             } catch (error) {
                 console.error(error);
@@ -1418,18 +1536,29 @@
 
         // 検索フィルター
         document.getElementById('manage-search-input').addEventListener('input', (e) => {
-            renderManagementTree(e.target.value);
+            renderManagementLists(e.target.value);
         });
 
-        // 登録済みリストの読み込みと表示（アコーディオン形式）
+        // 登録済みリストの読み取り
         let cachedManagementData = [];
+        let cachedPatientsData = [];
+        
         const loadManagementLists = async () => {
             try {
-                const response = await fetch(`${API_BASE}/api/facilities`);
-                const result = await response.json();
-                if (result.success) {
-                    cachedManagementData = result.data;
-                    renderManagementTree();
+                // 施設一覧と患者一覧の両方を取得
+                const [facRes, patRes] = await Promise.all([
+                    fetch(`${API_BASE}/api/facilities`),
+                    fetch(`${API_BASE}/api/patients`)
+                ]);
+                
+                const facData = await facRes.json();
+                const patData = await patRes.json();
+                
+                if (facData.success && patData.success) {
+                    cachedManagementData = facData.data;
+                    cachedPatientsData = patData.data;
+                    
+                    renderManagementLists();
                     renderFacilityMarkers(); // 地図にピンを立てる
                 }
             } catch (err) {
@@ -1440,8 +1569,9 @@
         const renderFacilityMarkers = () => {
             facilityLayerGroup.clearLayers();
             
+            // 施設のピンを描画
             cachedManagementData.forEach(fac => {
-                if (fac.lat && fac.lng) {
+                if (fac.lat && fac.lng && fac.id !== 'home') {
                     const patientList = fac.patients.map(p => `<li style="margin-bottom: 2px;">👤 ${p.name} (${p.room})</li>`).join('');
                     const popupContent = `
                         <div style="font-family: inherit; font-size: 0.85rem; min-width: 150px;">
@@ -1456,76 +1586,149 @@
                     
                     const facHtml = `<div style="background-color: #3b82f6; color: white; border: 2px solid #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 14px;">🏠</div>`;
                     const customIcon = L.divIcon({ html: facHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
-                    
-                    // 施設用の固定ピン
                     const marker = L.marker([fac.lat, fac.lng], { icon: customIcon }).addTo(facilityLayerGroup);
+                    marker.bindPopup(popupContent);
+                }
+            });
+
+            // 患者個別のピンを描画（自宅または個別設定がある場合）
+            cachedPatientsData.forEach(pat => {
+                if (pat.lat && pat.lng) {
+                    const currentFac = cachedManagementData.find(f => f.id === pat.facility_id);
+                    const facName = currentFac ? currentFac.name : '不明';
+                    
+                    const popupContent = `
+                        <div style="font-family: inherit; font-size: 0.85rem;">
+                            <strong style="color: var(--secondary);">👤 ${pat.name} 様</strong><br>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">所属: ${facName}</span><br>
+                            <span style="font-size: 0.75rem; color: var(--text-muted);">備考: ${pat.room || '-'}</span>
+                        </div>
+                    `;
+                    
+                    const patHtml = `<div style="background-color: var(--secondary); color: white; border: 2px solid #ffffff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 12px;">👤</div>`;
+                    const customIcon = L.divIcon({ html: patHtml, className: '', iconSize: [24, 24], iconAnchor: [12, 12] });
+                    const marker = L.marker([pat.lat, pat.lng], { icon: customIcon }).addTo(facilityLayerGroup);
                     marker.bindPopup(popupContent);
                 }
             });
         };
 
-        const renderManagementTree = (filter = "") => {
-            const container = document.getElementById('manage-tree-container');
-            container.innerHTML = '';
-            const lowerFilter = filter.toLowerCase();
-            const facilityOptions = cachedManagementData.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+        // --- 位置指定モード (Picking Mode) ---
+        let pickingState = { active: false, type: '', id: '' };
 
-            cachedManagementData.forEach(fac => {
-                // フィルター判定
-                const patientsMatch = fac.patients.filter(p => p.name.toLowerCase().includes(lowerFilter));
-                const facMatch = fac.name.toLowerCase().includes(lowerFilter);
-                
-                if (!facMatch && patientsMatch.length === 0) return;
+        window.enterPickingMode = (type, id, name) => {
+            pickingState = { active: true, type, id };
+            document.getElementById('picking-target-name').innerText = name;
+            document.getElementById('map-picking-overlay').style.display = 'flex';
+            document.getElementById('btn-close-manage-modal').click(); // 管理モーダルを一旦閉じる
+            alert(`📍 ${name} の位置指定モードを開始しました。\n地図上の目的の場所をクリックしてください。`);
+        };
 
-                const item = document.createElement('div');
-                item.className = `accordion-item ${filter ? 'expanded' : ''}`;
-                
-                item.innerHTML = `
-                    <div class="accordion-header">
-                        <div class="fac-info">
-                            <span class="fac-name">🏠 ${fac.name}</span>
-                            <span class="fac-id">ID: ${fac.id} / 患者 ${fac.patients.length}名</span>
-                        </div>
-                        <div style="display: flex; align-items: center; gap: 12px;">
-                            <button onclick="event.stopPropagation(); deleteFacility('${fac.id}')" style="background:none; border:none; color:#dc2626; cursor:pointer; font-size:0.8rem;">削除</button>
-                            <span class="arrow">▼</span>
-                        </div>
-                    </div>
-                    <div class="accordion-content">
-                        ${fac.patients.map(pat => {
-                            if (filter && !pat.name.toLowerCase().includes(lowerFilter)) return '';
-                            return `
-                                <div class="patient-sub-item">
-                                    <div style="flex: 1;">
-                                        <div style="font-weight:600; font-size:0.85rem;">👤 ${pat.name}</div>
-                                        <div style="font-size:0.7rem; color:var(--text-muted);">${pat.room} (ID: ${pat.id})</div>
-                                    </div>
-                                    <div style="display: flex; align-items: center; gap: 8px;">
-                                        <div style="font-size: 0.7rem; color: var(--text-muted);">移動先:</div>
-                                        <select onchange="window.updatePatientFacility('${pat.id}', this.value)" style="font-size: 0.75rem; padding: 2px 4px; border-radius: 4px; border: 1px solid var(--border); max-width: 120px;">
-                                            <option value="${fac.id}" selected>-- 移動なし --</option>
-                                            ${facilityOptions}
-                                        </select>
-                                        <button onclick="deletePatient('${pat.id}')" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1.2rem; padding: 0 8px;">&times;</button>
-                                    </div>
-                                </div>
-                            `;
-                        }).join('')}
-                        ${fac.patients.length === 0 ? '<div style="padding:10px 16px; font-size:0.8rem; color:var(--text-muted); text-align:center;">患者が未登録です</div>' : ''}
-                    </div>
-                `;
+        window.exitPickingMode = () => {
+            pickingState = { active: false, type: '', id: '' };
+            document.getElementById('map-picking-overlay').style.display = 'none';
+        };
 
-                // ヘッダークリックで開閉
-                item.querySelector('.accordion-header').addEventListener('click', () => {
-                    item.classList.toggle('expanded');
+        map.on('click', async (e) => {
+            if (!pickingState.active) return;
+            
+            const { lat, lng } = e.latlng;
+            const { type, id } = pickingState;
+            
+            try {
+                // IDに日本語（住所など）が含まれる場合があるため、必ずエンコードする
+                const url = type === 'facility' ? `${API_BASE}/api/facilities/${encodeURIComponent(id)}` : `${API_BASE}/api/patients/${encodeURIComponent(id)}`;
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ lat: parseFloat(lat.toFixed(6)), lng: parseFloat(lng.toFixed(6)) })
                 });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert(`🎯 位置を保存しました: ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+                    exitPickingMode();
+                    loadManagementLists(); // リストとマップを更新
+                    document.getElementById('btn-open-manage').click(); // 管理画面を再度開く
+                } else {
+                    alert('保存に失敗しました: ' + result.message);
+                }
+            } catch (err) {
+                console.error('Picking Error:', err);
+                alert('通信エラーが発生しました: ' + (err.message || 'サーバーに接続できません'));
+            }
+        });
 
-                container.appendChild(item);
+        // 管理画面のリスト描画
+        const renderManagementLists = (filter = "") => {
+            const facContainer = document.getElementById('manage-fac-container');
+            const patContainer = document.getElementById('manage-pat-container');
+            const facCountBadge = document.getElementById('fac-count-badge');
+            const patCountBadge = document.getElementById('pat-count-badge');
+            
+            facContainer.innerHTML = '';
+            patContainer.innerHTML = '';
+            
+            const lowerFilter = filter.toLowerCase();
+            
+            // --- 施設リストの描画 ---
+            const filteredFacs = cachedManagementData.filter(f => f.name.toLowerCase().includes(lowerFilter));
+            facCountBadge.innerText = filteredFacs.length;
+            
+            filteredFacs.forEach(fac => {
+                const item = document.createElement('div');
+                item.style = "background: white; border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);";
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                        <span style="font-weight: 700; font-size: 0.9rem;">🏠 ${fac.name}</span>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="enterPickingMode('facility', '${fac.id}', '${fac.name}')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.75rem;">📍位置</button>
+                            <button onclick="openEditFacilityModal('${fac.id}')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.75rem;">編集</button>
+                            <button onclick="deleteFacility('${fac.id}')" style="background:none; border:none; color:#dc2626; cursor:pointer; font-size:0.75rem;">${fac.id === 'home' ? '' : '削除'}</button>
+                        </div>
+                    </div>
+                    <div style="font-size: 0.75rem; color: var(--text-muted);">住所/ID: ${fac.id}</div>
+                `;
+                facContainer.appendChild(item);
             });
 
-            if (container.innerHTML === '') {
-                container.innerHTML = '<div style="text-align:center; color:var(--text-muted); margin-top:40px;">該当するデータが見つかりません。</div>';
-            }
+            // --- 患者リストの描画 ---
+            const filteredPats = cachedPatientsData.filter(p => p.name.toLowerCase().includes(lowerFilter));
+            patCountBadge.innerText = filteredPats.length;
+            
+            const facilityOptions = cachedManagementData.map(f => `<option value="${f.id}">${f.name}</option>`).join('');
+
+            filteredPats.forEach(pat => {
+                const item = document.createElement('div');
+                item.style = "background: white; border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);";
+                
+                const currentFac = cachedManagementData.find(f => f.id === pat.facility_id);
+
+                item.innerHTML = `
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-weight: 700; font-size: 0.95rem;">👤 ${pat.name} <span style="font-size: 0.75rem; color: var(--text-muted); font-weight: normal;">(ID:${pat.id})</span></span>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="enterPickingMode('patient', '${pat.id}', '${pat.name}')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.75rem;">📍位置</button>
+                            <button onclick="openEditPatientModal('${pat.id}')" style="background:none; border:none; color:var(--primary); cursor:pointer; font-size:0.75rem;">編集</button>
+                            <button onclick="deletePatient('${pat.id}')" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1rem;">&times;</button>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px; background: #f8fafc; padding: 6px 10px; border-radius: 6px; border: 1px solid #edf2f7;">
+                        <label style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;">移動先:</label>
+                        <select id="move-select-${pat.id}" style="flex: 1; font-size: 0.8rem; padding: 4px; border-radius: 4px; border: 1px solid var(--border); cursor: pointer; min-width: 0;">
+                            ${cachedManagementData.map(f => `<option value="${f.id}" ${f.id === pat.facility_id ? 'selected' : ''}>${f.id === 'home' ? '🏠 ' : ''}${f.name}</option>`).join('')}
+                        </select>
+                        <button onclick="window.updatePatientFacility('${pat.id}', document.getElementById('move-select-${pat.id}').value)" 
+                                style="background: var(--primary); color: white; border: none; border-radius: 4px; padding: 6px 12px; cursor: pointer; font-size: 0.75rem; font-weight: bold; white-space: nowrap;">移動</button>
+                        <button onclick="loadManagementLists()" 
+                                style="background: #e2e8f0; color: var(--text-muted); border: none; border-radius: 4px; padding: 4px 8px; cursor: pointer; font-size: 0.75rem;">取消</button>
+                    </div>
+                `;
+                patContainer.appendChild(item);
+            });
+
+            if (facContainer.innerHTML === '') facContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); margin-top:20px; font-size:0.8rem;">施設が見つかりません</div>';
+            if (patContainer.innerHTML === '') patContainer.innerHTML = '<div style="text-align:center; color:var(--text-muted); margin-top:20px; font-size:0.8rem;">患者が見つかりません</div>';
         };
 
         // 施設削除
@@ -1555,6 +1758,30 @@
             } catch (err) { alert('通信エラー'); }
         };
 
+        // 患者の所属施設移動
+        window.updatePatientFacility = async (patientId, newFacilityId) => {
+            if (!confirm('患者の所属施設を移動してよろしいですか？')) {
+                loadManagementLists();
+                return;
+            }
+            try {
+                const response = await fetch(`${API_BASE}/api/patients/${patientId}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ facility_id: newFacilityId })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert('移動が完了しました');
+                    loadManagementLists();
+                } else {
+                    alert('エラー: ' + result.message);
+                }
+            } catch (err) {
+                alert('通信エラーが発生しました');
+            }
+        };
+
         document.getElementById('btn-submit-patient').addEventListener('click', async () => {
             const facility_id = document.getElementById('select-facility').value;
             const id = document.getElementById('new-patient-id').value;
@@ -1582,6 +1809,143 @@
                 alert('通信エラー');
             }
         });
+
+        // ==========================================
+        // 編集モーダルのロジック
+        // ==========================================
+        const editModal = document.getElementById('edit-modal');
+        const btnCloseEditModal = document.getElementById('btn-close-edit-modal');
+        
+        btnCloseEditModal.onclick = () => editModal.style.display = 'none';
+
+        window.openEditFacilityModal = (id) => {
+            const fac = cachedManagementData.find(f => f.id === id);
+            if (!fac) return;
+            
+            document.getElementById('edit-modal-title').innerText = '施設の編集';
+            document.getElementById('edit-target-id').value = id;
+            document.getElementById('edit-target-type').value = 'facility';
+            
+            document.getElementById('edit-facility-fields').style.display = 'block';
+            document.getElementById('edit-patient-fields').style.display = 'none';
+            
+            document.getElementById('edit-facility-name').value = fac.name;
+            document.getElementById('edit-facility-address').value = '';
+            document.getElementById('edit-facility-lat').value = fac.lat;
+            document.getElementById('edit-facility-lng').value = fac.lng;
+            
+            editModal.style.display = 'flex';
+        };
+
+        window.openEditPatientModal = (id) => {
+            let patient = null;
+            cachedManagementData.forEach(f => {
+                const p = f.patients.find(p => p.id === id);
+                if (p) patient = p;
+            });
+            if (!patient) return;
+            
+            document.getElementById('edit-modal-title').innerText = '患者情報の編集';
+            document.getElementById('edit-target-id').value = id;
+            document.getElementById('edit-target-type').value = 'patient';
+            
+            document.getElementById('edit-facility-fields').style.display = 'none';
+            document.getElementById('edit-patient-fields').style.display = 'block';
+            
+            document.getElementById('edit-patient-name').value = patient.name;
+            document.getElementById('edit-patient-room').value = patient.room;
+            
+            editModal.style.display = 'flex';
+        };
+
+        document.getElementById('btn-edit-geocode').onclick = async () => {
+            const address = document.getElementById('edit-facility-address').value;
+            if (!address) return alert('住所を入力してください');
+            
+            try {
+                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent('日本 ' + address)}`);
+                const data = await response.json();
+                if (data && data.length > 0) {
+                    document.getElementById('edit-facility-lat').value = parseFloat(data[0].lat).toFixed(6);
+                    document.getElementById('edit-facility-lng').value = parseFloat(data[0].lon).toFixed(6);
+                } else {
+                    alert('位置が特定できませんでした');
+                }
+            } catch (e) { alert('検索エラー'); }
+        };
+
+        document.getElementById('btn-save-edit').onclick = async () => {
+            const id = document.getElementById('edit-target-id').value;
+            const type = document.getElementById('edit-target-type').value;
+            
+            let url = '';
+            let body = {};
+            
+            if (type === 'facility') {
+                url = `${API_BASE}/api/facilities/${id}`;
+                body = {
+                    name: document.getElementById('edit-facility-name').value,
+                    lat: parseFloat(document.getElementById('edit-facility-lat').value),
+                    lng: parseFloat(document.getElementById('edit-facility-lng').value)
+                };
+            } else {
+                url = `${API_BASE}/api/patients/${id}`;
+                body = {
+                    name: document.getElementById('edit-patient-name').value,
+                    room: document.getElementById('edit-patient-room').value
+                };
+            }
+            
+            try {
+                const response = await fetch(url, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+                const result = await response.json();
+                if (result.success) {
+                    alert('更新しました');
+                    editModal.style.display = 'none';
+                    loadManagementLists();
+                } else {
+                    alert('更新エラー: ' + result.message);
+                }
+            } catch (e) { alert('通信エラー'); }
+        };
+
+        // スタッフの現在地とルートをサーバーから取得して描画
+        async function refreshStaffRoute(staffId, date) {
+            try {
+                const response = await fetch(`${API_BASE}/api/location?staff_id=${staffId}&date=${date}`);
+                const result = await response.json();
+                
+                if (result.success && result.data.length > 0) {
+                    const latlngs = result.data.map(p => [p.lat, p.lng]);
+                    
+                    // ルート（線）の更新
+                    if (currentPolyline) map.removeLayer(currentPolyline);
+                    currentPolyline = L.polyline(latlngs, { color: 'var(--primary)', weight: 4, opacity: 0.6 }).addTo(map);
+                    
+                    // 現在地マーカーの更新
+                    currentMarkers.forEach(m => map.removeLayer(m));
+                    currentMarkers = [];
+                    
+                    const lastPoint = latlngs[latlngs.length - 1];
+                    const markerHtml = `<div style="background-color: var(--primary); border: 3px solid #fff; width: 22px; height: 22px; border-radius: 50%; box-shadow: 0 0 15px var(--primary); animation: pulse 2s infinite;"></div>`;
+                    const customIcon = L.divIcon({ html: markerHtml, className: '', iconSize: [22, 22], iconAnchor: [11, 11] });
+                    const marker = L.marker(lastPoint, {icon: customIcon}).addTo(map);
+                    currentMarkers.push(marker);
+
+                    // 最初に開いたときは全体が見えるようにズーム
+                    if (!window.hasInitiallyZoomed) {
+                        map.fitBounds(currentPolyline.getBounds(), { padding: [50, 50] });
+                        window.hasInitiallyZoomed = true;
+                    }
+                }
+            } catch (e) {
+                console.error('位置情報の取得に失敗:', e);
+            }
+        }
 
         // 初期表示
         renderStaffList();
