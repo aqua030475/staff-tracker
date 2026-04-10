@@ -289,8 +289,8 @@
         #manage-modal .modal-content {
             height: 100vh;
             max-height: 100vh;
-            max-width: 420px;
-            width: 420px;
+            max-width: 600px;
+            width: 600px;
             margin: 0;
             border-radius: 16px 0 0 16px;
             box-shadow: -10px 0 30px rgba(0,0,0,0.1);
@@ -1713,19 +1713,17 @@
                             <button onclick="deletePatient('${pat.id}')" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1rem;">&times;</button>
                         </div>
                     </div>
-                    <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #edf2f7; display: flex; flex-direction: column; gap: 8px;">
+                    <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #edf2f7; display: flex; flex-direction: column; gap: 10px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <label style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;">📍 移動先:</label>
                             <select id="move-select-${pat.id}" style="flex: 1; font-size: 0.85rem; padding: 6px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; min-width: 0; background: white;">
                                 ${cachedManagementData.map(f => `<option value="${f.id}" ${f.id === pat.facility_id ? 'selected' : ''}>${f.id === 'home' ? '🏠 ' : ''}${f.name}</option>`).join('')}
                             </select>
                         </div>
-                        <div style="display: flex; flex-direction: column; gap: 8px;">
-                            <button onclick="window.updatePatientFacility('${pat.id}', document.getElementById('move-select-${pat.id}').value)" 
-                                    style="width: 100%; background: var(--primary); color: white; border: none; border-radius: 6px; padding: 10px; cursor: pointer; font-size: 0.85rem; font-weight: bold;">この施設へ移動を確定する</button>
-                            <button onclick="loadManagementLists()" 
-                                    style="width: 100%; background: #e2e8f0; color: var(--text-main); border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-size: 0.8rem;">操作をキャンセルする</button>
-                        </div>
+                        <button onclick="window.updatePatientFacility('${pat.id}', document.getElementById('move-select-${pat.id}').value)" 
+                                style="width: 100%; background: var(--primary); color: white; border: none; border-radius: 6px; padding: 10px; cursor: pointer; font-size: 0.85rem; font-weight: bold;">この施設に移動を確定する</button>
+                        <button onclick="loadManagementLists()" 
+                                style="width: 100%; background: #e2e8f0; color: var(--text-main); border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-size: 0.75rem;">取り消す</button>
                     </div>
                 `;
                 patContainer.appendChild(item);
