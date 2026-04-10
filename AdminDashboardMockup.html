@@ -1720,11 +1720,11 @@
                                 ${cachedManagementData.map(f => `<option value="${f.id}" ${f.id === pat.facility_id ? 'selected' : ''}>${f.id === 'home' ? '🏠 ' : ''}${f.name}</option>`).join('')}
                             </select>
                         </div>
-                        <div style="display: flex; gap: 8px; justify-content: flex-end;">
-                            <button onclick="loadManagementLists()" 
-                                    style="background: #e2e8f0; color: var(--text-main); border: none; border-radius: 6px; padding: 6px 12px; cursor: pointer; font-size: 0.75rem;">取り消す</button>
+                        <div style="display: flex; flex-direction: column; gap: 8px;">
                             <button onclick="window.updatePatientFacility('${pat.id}', document.getElementById('move-select-${pat.id}').value)" 
-                                    style="background: var(--primary); color: white; border: none; border-radius: 6px; padding: 6px 16px; cursor: pointer; font-size: 0.75rem; font-weight: bold;">移動を確定する</button>
+                                    style="width: 100%; background: var(--primary); color: white; border: none; border-radius: 6px; padding: 10px; cursor: pointer; font-size: 0.85rem; font-weight: bold;">この施設へ移動を確定する</button>
+                            <button onclick="loadManagementLists()" 
+                                    style="width: 100%; background: #e2e8f0; color: var(--text-main); border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-size: 0.8rem;">操作をキャンセルする</button>
                         </div>
                     </div>
                 `;
