@@ -1569,44 +1569,64 @@
         const renderFacilityMarkers = () => {
             facilityLayerGroup.clearLayers();
             
-            // 施設のピンを描画
+            // 施設に所属している患者をグループ化
+            const patientsByFacility = {};
+            cachedPatientsData.forEach(p => {
+                if (p.facility_id) {
+                    if (!patientsByFacility[p.facility_id]) patientsByFacility[p.facility_id] = [];
+                    patientsByFacility[p.facility_id].push(p);
+                }
+            });
+
+            // 1. 施設のピンを描画（所属する患者をリスト表示）
             cachedManagementData.forEach(fac => {
                 if (fac.lat && fac.lng && fac.id !== 'home') {
-                    const patientList = fac.patients.map(p => `<li style="margin-bottom: 2px;">👤 ${p.name} (${p.room})</li>`).join('');
+                    const patientsInFac = patientsByFacility[fac.id] || [];
+                    const patientList = patientsInFac.map(p => 
+                        `<li style="margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
+                            <span style="font-size: 1rem;">👤</span>
+                            <div>
+                                <div style="font-weight: bold;">${p.name} 様</div>
+                                <div style="font-size: 0.7rem; color: #64748b;">${p.room || '部屋番号なし'}</div>
+                            </div>
+                         </li>`
+                    ).join('');
+
                     const popupContent = `
-                        <div style="font-family: inherit; font-size: 0.85rem; min-width: 150px;">
-                            <strong style="color: var(--primary);">🏠 ${fac.name}</strong><br>
-                            <span style="font-size: 0.7rem; color: var(--text-muted);">住所: ${fac.id}</span>
-                            <hr style="border: 0; border-top: 1px solid var(--border); margin: 8px 0;">
-                            <ul style="margin: 0; padding: 0 0 0 0; list-style-type: none;">
-                                ${patientList || '<li style="color: var(--text-muted);">患者未登録</li>'}
+                        <div style="font-family: inherit; font-size: 0.85rem; min-width: 180px;">
+                            <div style="background: #eff6ff; padding: 8px; border-radius: 6px; margin-bottom: 8px; border: 1px solid #dbeafe;">
+                                <strong style="color: #1d4ed8; font-size: 0.9rem;">🏠 ${fac.name}</strong><br>
+                                <span style="font-size: 0.7rem; color: #60a5fa;">ID: ${fac.id}</span>
+                            </div>
+                            <div style="font-weight: bold; font-size: 0.75rem; color: #64748b; margin-bottom: 6px; padding-left: 4px;">この施設の患者様 (${patientsInFac.length}名):</div>
+                            <ul style="margin: 0; padding: 0; list-style-type: none; max-height: 200px; overflow-y: auto;">
+                                ${patientList || '<li style="color: #94a3b8; padding: 4px;">登録患者なし</li>'}
                             </ul>
                         </div>
                     `;
                     
-                    const facHtml = `<div style="background-color: #3b82f6; color: white; border: 2px solid #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 14px;">🏠</div>`;
-                    const customIcon = L.divIcon({ html: facHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
+                    const facHtml = `<div style="background-color: #3b82f6; color: white; border: 2px solid #ffffff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4); font-size: 16px;">🏠</div>`;
+                    const customIcon = L.divIcon({ html: facHtml, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
                     const marker = L.marker([fac.lat, fac.lng], { icon: customIcon }).addTo(facilityLayerGroup);
                     marker.bindPopup(popupContent);
                 }
             });
 
-            // 患者個別のピンを描画（自宅または個別設定がある場合）
+            // 2. 自宅（施設外）の患者のみ個別のピンを描画
             cachedPatientsData.forEach(pat => {
-                if (pat.lat && pat.lng) {
-                    const currentFac = cachedManagementData.find(f => f.id === pat.facility_id);
-                    const facName = currentFac ? currentFac.name : '不明';
-                    
+                if (pat.lat && pat.lng && (!pat.facility_id || pat.facility_id === 'home')) {
                     const popupContent = `
-                        <div style="font-family: inherit; font-size: 0.85rem;">
-                            <strong style="color: var(--secondary);">👤 ${pat.name} 様</strong><br>
-                            <span style="font-size: 0.75rem; color: var(--text-muted);">所属: ${facName}</span><br>
-                            <span style="font-size: 0.75rem; color: var(--text-muted);">備考: ${pat.room || '-'}</span>
+                        <div style="font-family: inherit; font-size: 0.85rem; min-width: 150px;">
+                            <div style="background: #fff7ed; padding: 8px; border-radius: 6px; margin-bottom: 4px; border: 1px solid #ffedd5;">
+                                <strong style="color: #ea580c; font-size: 0.9rem;">👤 ${pat.name} 様</strong>
+                            </div>
+                            <div style="font-size: 0.75rem; color: #9a3412; padding: 4px;">📍 ご自宅</div>
+                            <div style="font-size: 0.75rem; color: #64748b; padding: 4px;">備考: ${pat.room || '-'}</div>
                         </div>
                     `;
                     
-                    const patHtml = `<div style="background-color: var(--secondary); color: white; border: 2px solid #ffffff; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 5px rgba(0,0,0,0.3); font-size: 12px;">👤</div>`;
-                    const customIcon = L.divIcon({ html: patHtml, className: '', iconSize: [24, 24], iconAnchor: [12, 12] });
+                    const patHtml = `<div style="background-color: #f97316; color: white; border: 2px solid #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(249, 115, 22, 0.4); font-size: 14px;">🏡</div>`;
+                    const customIcon = L.divIcon({ html: patHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
                     const marker = L.marker([pat.lat, pat.lng], { icon: customIcon }).addTo(facilityLayerGroup);
                     marker.bindPopup(popupContent);
                 }
