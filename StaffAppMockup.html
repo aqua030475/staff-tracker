@@ -369,10 +369,7 @@
             <button id="btn-start" class="btn btn-start">トラッキング開始</button>
             <button id="btn-stop" class="btn btn-stop">トラッキング停止</button>
 
-            <!-- ジオフェンスの自動検知シミュレーション機能 -->
-            <button id="btn-sim-travel" class="btn" style="background-color: #8b5cf6; color: white; display: none; margin-top: 16px; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3);">
-                🚗 自動検知シミュレーション開始
-            </button>
+
 
             <!-- 手動の施設検知デモボタン -->
             <div id="facility-trigger-container" style="display: none; margin-top: 16px;">
@@ -429,9 +426,7 @@
             </div>
             
             <button id="btn-save-patients" class="btn btn-start" style="margin-top: 16px;">📝 日報データに記録して完了</button>
-            <button id="btn-sim-travel" class="btn" style="display: none; background: #f8fafc; color: var(--text-muted); border: 1px solid var(--border); margin-bottom: 24px; box-shadow: none;">
-            🚗 移動シミュレーション開始 (デモ用)
-        </button>
+
         <button id="btn-close-facility" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 8px; box-shadow: none;">キャンセル</button>
         </div>
     </div>
@@ -611,9 +606,8 @@
             permissionAlert.style.display = 'none';
             dataDisplay.style.display = 'block';
             
-            // 施設デモボタンを表示
+            // 施設手動チェックインボタンを表示
             triggerContainer.style.display = 'block';
-            document.getElementById('btn-sim-travel').style.display = 'block';
         });
 
         // トラッキング停止ボタン
@@ -629,7 +623,6 @@
             statusBadge.classList.remove('active');
             statusBadge.querySelector('span').innerText = '待機中';
             triggerContainer.style.display = 'none';
-            document.getElementById('btn-sim-travel').style.display = 'none';
             
             if (window.simInterval) {
                 clearInterval(window.simInterval);
@@ -906,12 +899,7 @@
             }
         });
 
-        // ==================================
-        // ジオフェンス（自動検知）デモ処理
-        // ==================================
-        let currentPos = { lat: 35.688000, lng: 139.690000 };
-        window.simInterval = null;
-        let hasArrived = false;
+
 
         const calculateDistance = (lat1, lon1, lat2, lon2) => {
             const R = 6371e3;
@@ -923,60 +911,10 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         };
 
-        document.getElementById('btn-sim-travel').addEventListener('click', () => {
-            if (window.simInterval) return;
-            if (FACILITIES_DATA.length === 0) {
-                alert('施設データがないためシミュレーションを開始できません。');
-                return;
-            }
-            const target = FACILITIES_DATA[0]; // デモは登録されている最初の施設に向かう設定
-            hasArrived = false;
-            currentPos = { lat: 35.688000, lng: 139.690000 }; // 少し離れた地点から再スタート
-            document.getElementById('btn-sim-travel').innerText = "🚗 移動シミュレーション中...";
-            document.getElementById('btn-sim-travel').disabled = true;
-            addLog("🚗 [デモ] 施設へ向けて自動移動を開始しました...", "success");
-
-            window.simInterval = setInterval(() => {
-                // 少しずつ近づく
-                currentPos.lat += 0.000180;
-                currentPos.lng += 0.000210;
-                
-                // 画面の座標値を更新
-                document.getElementById('val-lat').innerText = currentPos.lat.toFixed(6);
-                document.getElementById('val-lng').innerText = currentPos.lng.toFixed(6);
-                document.getElementById('val-acc').innerText = '5.0 m (SIM)';
-                document.getElementById('val-time').innerText = new Date().toLocaleTimeString('ja-JP');
-
-                // シミュレーション中の座標もサーバーへ報告する
-                if (isTracking && currentStaff) {
-                    sendLocationToServer(currentPos.lat, currentPos.lng);
-                }
-
-                const dist = calculateDistance(currentPos.lat, currentPos.lng, target.lat, target.lng);
-                
-                if (dist > 50) {
-                    addLog(`📡 [移動中] ${target.name}まで 約 ${Math.round(dist)}m`, "success");
-                } else if (!hasArrived) {
-                    hasArrived = true;
-                    clearInterval(window.simInterval);
-                    window.simInterval = null;
-                    document.getElementById('btn-sim-travel').style.display = 'none';
-                    document.getElementById('btn-sim-travel').innerText = "🚗 自動検知シミュレーション開始";
-                    document.getElementById('btn-sim-travel').disabled = false;
-                    
-                    addLog(`🎯 [自動検知] ${target.name} に到着しました！(誤差 ${Math.round(dist)}m)`, "success");
-                    
-                    // 1秒後に自動で施設のチェックリストモーダルを開く
-                    setTimeout(() => {
-                        openFacilityModal(target);
-                    }, 1000);
-                }
-            }, 1500);
-        });
-
         // ==================================
         // 位置情報検知の微調整パラメータ
         // ==================================
+
         const GEO_SETTINGS = {
             maxAccuracy: 100,      // これ以上精度が悪い(m)ときは無視する
             arrivalDistance: 50,    // 到着と判定する距離(m)
@@ -985,7 +923,6 @@
 
         // 位置取得成功時
         const successCallback = (position) => {
-            if (window.simInterval) return; // シミュレーション中は本物のGPSは無視する
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
             const acc = position.coords.accuracy;
