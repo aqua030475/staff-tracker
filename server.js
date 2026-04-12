@@ -258,9 +258,10 @@ app.post('/api/save-visit', async (req, res) => {
         await client.query('BEGIN');
         
         for (const v of visits) {
+            const trimmedStaffName = staffName.trim();
             const visitResult = await client.query(
                 "INSERT INTO visits (staff_name, visit_date, time_range, location, duration, category, notes) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id",
-                [staffName, date, v.time, v.location, v.duration, v.category || '未設定', v.notes || '']
+                [trimmedStaffName, date, v.time, v.location, v.duration, v.category || '未設定', v.notes || '']
             );
             const visitId = visitResult.rows[0].id;
             
@@ -328,8 +329,8 @@ app.get('/api/visits', async (req, res) => {
     const params = [];
 
     if (staffName) {
-        params.push(staffName);
-        query += ` AND v.staff_name = $${params.length}`;
+        params.push(staffName.trim());
+        query += ` AND TRIM(v.staff_name) = $${params.length}`;
     }
     if (date) {
         params.push(date);
@@ -549,7 +550,14 @@ app.get('/api/location', async (req, res) => {
 // --- スタッフ用API ---
 app.get('/api/staff', async (req, res) => {
     try {
-        const result = await pool.query("SELECT * FROM staff ORDER BY created_at ASC");
+        // 各スタッフの最新の位置情報取得時間を結合して取得
+        const query = `
+            SELECT s.*, 
+                   (SELECT MAX(timestamp) FROM locations WHERE staff_id = s.id) as last_seen
+            FROM staff s 
+            ORDER BY s.created_at ASC
+        `;
+        const result = await pool.query(query);
         res.json({ success: true, data: result.rows });
     } catch (err) {
         res.status(500).json({ success: false, error: err.message });

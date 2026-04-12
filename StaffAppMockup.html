@@ -857,8 +857,8 @@
             const now = new Date();
             const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-            // 選択されたスタッフ名を使用
-            const staffName = currentStaff ? currentStaff.name : "不明なスタッフ";
+            // 選択されたスタッフ名を使用 (空白をトリミングして一致精度を向上)
+            const staffName = currentStaff ? currentStaff.name.trim() : "不明なスタッフ";
             
             checkboxes.forEach(cb => {
                 const name = cb.value;
