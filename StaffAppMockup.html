@@ -230,6 +230,8 @@
             border-radius: 20px 20px 0 0; padding: 32px 24px;
             box-shadow: 0 -5px 25px rgba(0,0,0,0.1);
             animation: slideUp 0.3s ease; text-align: left;
+            max-height: 85vh;
+            overflow-y: auto;
         }
         @keyframes slideUp {
             from { transform: translateY(100%); }
@@ -642,18 +644,41 @@
             if (FACILITIES_DATA.length > 0) {
                 manualFacilityContainer.innerHTML = ''; // クリア
                 FACILITIES_DATA.forEach(facility => {
-                    const btn = document.createElement('div');
-                    btn.className = 'staff-opt-btn';
-                    btn.style.textAlign = 'left';
-                    btn.innerHTML = `
-                        <div style="font-weight: 600;">📍 ${facility.name}</div>
-                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${facility.address || '住所未登録'}</div>
-                    `;
-                    btn.onclick = () => {
-                        manualFacilityModal.style.display = 'none';
-                        openFacilityModal(facility);
-                    };
-                    manualFacilityContainer.appendChild(btn);
+                    if (facility.id === 'home') {
+                        // 個人宅の場合は各患者をそれぞれボタンにする
+                        facility.patients.forEach(patient => {
+                            const btn = document.createElement('div');
+                            btn.className = 'staff-opt-btn';
+                            btn.style.textAlign = 'left';
+                            btn.innerHTML = `
+                                <div style="font-weight: 600;">🏠 ${patient.name} 様 ご自宅</div>
+                                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${patient.address || '個人宅'}</div>
+                            `;
+                            btn.onclick = () => {
+                                manualFacilityModal.style.display = 'none';
+                                openFacilityModal({
+                                    id: 'home',
+                                    name: `${patient.name} 様ご自宅`,
+                                    patients: [patient]
+                                });
+                            };
+                            manualFacilityContainer.appendChild(btn);
+                        });
+                    } else {
+                        // 通常の施設
+                        const btn = document.createElement('div');
+                        btn.className = 'staff-opt-btn';
+                        btn.style.textAlign = 'left';
+                        btn.innerHTML = `
+                            <div style="font-weight: 600;">📍 ${facility.name}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${facility.address || '住所未登録'}</div>
+                        `;
+                        btn.onclick = () => {
+                            manualFacilityModal.style.display = 'none';
+                            openFacilityModal(facility);
+                        };
+                        manualFacilityContainer.appendChild(btn);
+                    }
                 });
                 manualFacilityModal.style.display = 'flex';
             } else {

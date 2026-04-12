@@ -380,7 +380,10 @@ app.get('/api/facilities', async (req, res) => {
                 patients: patients.filter(p => p.facility_id === f.id).map(p => ({
                     id: p.id,
                     name: p.name,
-                    room: p.room
+                    room: p.room,
+                    lat: p.lat,
+                    lng: p.lng,
+                    address: p.address
                 }))
             };
         });
