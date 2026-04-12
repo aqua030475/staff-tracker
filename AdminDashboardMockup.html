@@ -131,6 +131,15 @@
             gap: 24px;
             padding: 24px;
             overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        /* 編集モード時はマップを最大化 */
+        .dashboard-grid.editing-mode {
+            grid-template-columns: 1fr;
+        }
+        .dashboard-grid.editing-mode .timeline-card {
+            display: none;
         }
 
         /* Map Area */
@@ -456,6 +465,45 @@
             position: absolute; bottom: -40px; left: 50%; transform: translateX(-50%);
             color: white; font-size: 0.9rem;
         }
+
+        /* 編集モードトグル用スイッチ */
+        .switch-container {
+            display: flex; align-items: center; gap: 8px; font-size: 0.9rem; font-weight: 600;
+        }
+        .switch-toggle {
+            position: relative; width: 44px; height: 24px; background: var(--text-muted);
+            border-radius: 12px; cursor: pointer; transition: background 0.3s;
+        }
+        .switch-toggle::after {
+            content: ''; position: absolute; top: 2px; left: 2px; width: 20px; height: 20px;
+            background: white; border-radius: 50%; transition: transform 0.3s;
+        }
+        .switch-toggle.active { background: var(--secondary); }
+        .switch-toggle.active::after { transform: translateX(20px); }
+
+        /* トースト通知 */
+        .toast-container {
+            position: fixed; bottom: 20px; right: 20px; z-index: 9999;
+            display: flex; flex-direction: column; gap: 10px;
+        }
+        .toast {
+            background: rgba(0, 0, 0, 0.8); color: white; padding: 12px 20px;
+            border-radius: 8px; font-size: 0.9rem; font-weight: 600;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            animation: slideInBottom 0.3s ease-out, fadeOut 0.5s ease-out 2.5s forwards;
+            min-width: 200px;
+        }
+        .toast.success { background: #10b981; }
+        .toast.error { background: #ef4444; }
+
+        @keyframes slideInBottom {
+            from { transform: translateY(100%); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        @keyframes fadeOut {
+            from { opacity: 1; }
+            to { opacity: 0; display: none; }
+        }
     </style>
 </head>
 <body>
@@ -484,10 +532,15 @@
             </div>
         </header>
 
-        <div class="dashboard-grid">
+        <div class="dashboard-grid" id="dashboard-grid">
             <div class="map-card">
-                <div style="padding: 16px 24px; border-bottom: 1px solid var(--border); font-weight: 600;">
-                    現在地と移動ルート
+                <div style="padding: 16px 24px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center;">
+                    <div style="font-weight: 600;">現在地と移動ルート</div>
+                    <div class="switch-container">
+                        <span style="color: var(--text-muted); font-size: 0.85rem;">位置調整</span>
+                        <div class="switch-toggle" id="edit-mode-switch" onclick="toggleEditMode()"></div>
+                        <span id="edit-mode-label" style="color: var(--text-muted); font-size: 0.85rem;">OFF</span>
+                    </div>
                 </div>
                 <!-- ここにマップが表示されます -->
                 <div style="position: relative; flex: 1; display: flex; flex-direction: column;">
@@ -863,6 +916,39 @@
         // APIのベースURL設定 (file:// で開いた場合は localhost:3000 を向く)
         const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000' : '';
 
+        // --- 管理者認証（パスワード保護） ---
+        const getAdminPassword = () => localStorage.getItem('admin_password');
+
+        const fetchWithAuth = async (url, options = {}) => {
+            const password = getAdminPassword();
+            const headers = {
+                ...options.headers,
+                'x-admin-password': password
+            };
+            const response = await fetch(url, { ...options, headers });
+            
+            // 401エラー（認証失敗）の場合はパスワードを再入力させる
+            if (response.status === 401) {
+                localStorage.removeItem('admin_password');
+                alert('パスワードが正しくないか、期限が切れています。再ログインしてください。');
+                location.reload();
+            }
+            return response;
+        };
+
+        const checkAdminAuth = () => {
+            if (!getAdminPassword()) {
+                const pass = prompt('管理者パスワードを入力してください:');
+                if (pass) {
+                    localStorage.setItem('admin_password', pass);
+                    location.reload();
+                } else {
+                    document.body.innerHTML = '<div style="padding: 100px; text-align: center;"><h1>閲覧権限がありません</h1><p>管理者パスワードが必要です。</p><button onclick="location.reload()">パスワードを入力する</button></div>';
+                }
+            }
+        };
+        checkAdminAuth();
+
         // マップクリックで座標を取得するフラグ
         let isPickingLocation = false;
         let pickerMarker = null;
@@ -889,7 +975,7 @@
             container.innerHTML = '<div style="text-align:center; padding:20px; color:var(--text-muted);">読み込み中...</div>';
 
             try {
-                const response = await fetch(`${API_BASE}/api/staff`);
+                const response = await fetchWithAuth(`${API_BASE}/api/staff`);
                 const result = await response.json();
                 
                 if (result.success) {
@@ -984,7 +1070,7 @@
             timelineContainer.innerHTML = '<div style="text-align:center; color: var(--text-muted); padding: 20px;">読み込み中...</div>';
 
             try {
-                const response = await fetch(`${API_BASE}/api/visits?staffName=${encodeURIComponent(staff.name)}&date=${today}`);
+                const response = await fetchWithAuth(`${API_BASE}/api/visits?staffName=${encodeURIComponent(staff.name)}&date=${today}`);
                 const result = await response.json();
                 
                 timelineContainer.innerHTML = '';
@@ -1085,7 +1171,7 @@
 
             try {
                 // Node.jsのローカルサーバー(ポート3000)へ日報データと保存用の構造化データを送信
-                const response = await fetch(`${API_BASE}/api/send-report`, {
+                const response = await fetchWithAuth(`${API_BASE}/api/send-report`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
@@ -1183,7 +1269,7 @@
         // ==========================================
         const loadFacilitiesForSelect = async () => {
             try {
-                const response = await fetch(`${API_BASE}/api/facilities`);
+                const response = await fetchWithAuth(`${API_BASE}/api/facilities`);
                 const result = await response.json();
                 if (result.success) {
                     const select = document.getElementById('select-facility');
@@ -1229,23 +1315,27 @@
             btn.disabled = true;
 
             try {
-                // OpenStreetMap (Nominatim) の無料APIを利用
-                // 「日本」を明示的に付与し、日本語での検索結果を優先するように改良
-                const query = `日本 ${address}`;
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&accept-language=ja`);
+                // バックエンド経由で Google Maps Geocoding API を利用
+                const response = await fetchWithAuth(`${API_BASE}/api/geocode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address: address })
+                });
                 const data = await response.json();
 
-                if (data && data.length > 0) {
-                    document.getElementById('new-facility-lat').value = parseFloat(data[0].lat).toFixed(6);
-                    document.getElementById('new-facility-lng').value = parseFloat(data[0].lon).toFixed(6);
+                if (data.success) {
+                    document.getElementById('new-facility-lat').value = parseFloat(data.lat).toFixed(6);
+                    document.getElementById('new-facility-lng').value = parseFloat(data.lng).toFixed(6);
                     
                     const nameInput = document.getElementById('new-facility-name');
                     if (!nameInput.value) {
                         nameInput.value = address;
                     }
+                    if (data.formatted_address) {
+                        console.log('正規化住所:', data.formatted_address);
+                    }
                 } else {
-                    // 日本を追加してもダメな場合の再トライ（住所を少し短くしてみる等の案内）
-                    alert('住所から座標を特定できませんでした。\n「日本」を付けて検索しましたが、ヒットしませんでした。住所の「建物名」を消して、番地（5-45など）までに短縮して再度お試しください。');
+                    alert('住所から座標を特定できませんでした。\nGoogle APIエラー: ' + data.message + '\n建物名が含まれる場合は、番地までに短縮して再度お試しください。');
                 }
             } catch (err) {
                 console.error('ジオコーディングエラー:', err);
@@ -1259,22 +1349,24 @@
         document.getElementById('btn-submit-facility').addEventListener('click', async () => {
             const id = document.getElementById('new-facility-id').value;
             const name = document.getElementById('new-facility-name').value;
+            const address = document.getElementById('new-facility-address').value;
             const lat = document.getElementById('new-facility-lat').value;
             const lng = document.getElementById('new-facility-lng').value;
             
             if(!id || !name || !lat || !lng) return alert('入力項目が不足しています。');
             
             try {
-                const response = await fetch(`${API_BASE}/api/facilities`, {
+                const response = await fetchWithAuth(`${API_BASE}/api/facilities`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, name, lat: parseFloat(lat), lng: parseFloat(lng) })
+                    body: JSON.stringify({ id, name, address, lat: parseFloat(lat), lng: parseFloat(lng) })
                 });
                 const data = await response.json();
                 if(data.success) {
                     alert('施設を追加しました');
                     document.getElementById('new-facility-id').value = '';
                     document.getElementById('new-facility-name').value = '';
+                    document.getElementById('new-facility-address').value = '';
                     document.getElementById('new-facility-lat').value = '';
                     document.getElementById('new-facility-lng').value = '';
                     loadFacilitiesForSelect(); // セレクトボックス更新
@@ -1367,7 +1459,7 @@
             // サーバーへ送信
             if (processedItems.length > 0) {
                 try {
-                    const res = await fetch(`${API_BASE}/api/batch-import`, {
+                    const res = await fetchWithAuth(`${API_BASE}/api/batch-import`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({ items: processedItems })
@@ -1398,7 +1490,7 @@
             if (!confirm('本当にすべての登録データを消去しますか？\n（施設、患者、日報記録のすべてが消えます。この操作は取り消せません）')) return;
             
             try {
-                const res = await fetch(`${API_BASE}/api/all`, { method: 'DELETE' });
+                const res = await fetchWithAuth(`${API_BASE}/api/all`, { method: 'DELETE' });
                 const result = await res.json();
                 if (result.success) {
                     alert('すべて消去しました。');
@@ -1416,7 +1508,7 @@
             listEl.innerHTML = '読み込み中...';
             
             try {
-                const response = await fetch(`${API_BASE}/api/staff`);
+                const response = await fetchWithAuth(`${API_BASE}/api/staff`);
                 const result = await response.json();
                 if (result.success) {
                     listEl.innerHTML = '';
@@ -1448,7 +1540,7 @@
         window.deleteStaff = async (id) => {
             if (!confirm('このスタッフを削除してよろしいですか？')) return;
             try {
-                const res = await fetch(`${API_BASE}/api/staff/${id}`, { method: 'DELETE' });
+                const res = await fetchWithAuth(`${API_BASE}/api/staff/${id}`, { method: 'DELETE' });
                 const result = await res.json();
                 if (result.success) {
                     renderManageStaffList();
@@ -1466,7 +1558,7 @@
             
             const id = 's_' + Date.now();
             try {
-                const res = await fetch(`${API_BASE}/api/staff`, {
+                const res = await fetchWithAuth(`${API_BASE}/api/staff`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id, name, role })
@@ -1485,7 +1577,7 @@
         // --- 連携設定ロジック ---
         const loadSettings = async () => {
             try {
-                const response = await fetch(`${API_BASE}/api/settings`);
+                const response = await fetchWithAuth(`${API_BASE}/api/settings`);
                 const result = await response.json();
                 if (result.success) {
                     const urlInput = document.getElementById('setting-google-sheet-url');
@@ -1501,7 +1593,7 @@
             btn.innerText = '保存中...';
 
             try {
-                const res = await fetch(`${API_BASE}/api/settings`, {
+                const res = await fetchWithAuth(`${API_BASE}/api/settings`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ key: 'google_sheet_webhook_url', value: url })
@@ -1547,8 +1639,8 @@
             try {
                 // 施設一覧と患者一覧の両方を取得
                 const [facRes, patRes] = await Promise.all([
-                    fetch(`${API_BASE}/api/facilities`),
-                    fetch(`${API_BASE}/api/patients`)
+                    fetchWithAuth(`${API_BASE}/api/facilities`),
+                    fetchWithAuth(`${API_BASE}/api/patients`)
                 ]);
                 
                 const facData = await facRes.json();
@@ -1602,13 +1694,29 @@
                             <ul style="margin: 0; padding: 0; list-style-type: none; max-height: 200px; overflow-y: auto;">
                                 ${patientList || '<li style="color: #94a3b8; padding: 4px;">登録患者なし</li>'}
                             </ul>
+                            <div style="margin-top: 8px; text-align: right;">
+                                <a href="https://www.google.com/maps?q=${fac.lat},${fac.lng}" target="_blank" style="font-size: 0.75rem; color: #3b82f6; text-decoration: none;">🌍 Google Mapsで確認</a>
+                            </div>
                         </div>
                     `;
                     
                     const facHtml = `<div style="background-color: #3b82f6; color: white; border: 2px solid #ffffff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(59, 130, 246, 0.4); font-size: 16px;">🏠</div>`;
                     const customIcon = L.divIcon({ html: facHtml, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
-                    const marker = L.marker([fac.lat, fac.lng], { icon: customIcon }).addTo(facilityLayerGroup);
+                    const marker = L.marker([fac.lat, fac.lng], { 
+                        icon: customIcon,
+                        draggable: window.isEditMode
+                    }).addTo(facilityLayerGroup);
                     marker.bindPopup(popupContent);
+
+                    // ドラッグ終了時のイベント
+                    marker.on('dragend', function(e) {
+                        const newPos = e.target.getLatLng();
+                        if (confirm(`🏠 ${fac.name} の新しい位置を保存しますか？`)) {
+                            saveMarkerLocation('facility', fac.id, newPos.lat, newPos.lng);
+                        } else {
+                            renderFacilityMarkers(); // キャンセル時は元の位置に戻す
+                        }
+                    });
                 }
             });
 
@@ -1617,20 +1725,115 @@
                 if (pat.lat && pat.lng && (!pat.facility_id || pat.facility_id === 'home')) {
                     const popupContent = `
                         <div style="font-family: inherit; font-size: 0.85rem; min-width: 150px;">
-                            <div style="background: #fff7ed; padding: 8px; border-radius: 6px; margin-bottom: 4px; border: 1px solid #ffedd5;">
-                                <strong style="color: #ea580c; font-size: 0.9rem;">👤 ${pat.name} 様</strong>
+                            <div style="background: #fff7ed; padding: 8px; border-radius: 6px; margin-bottom: 4px; border: 1px solid #ffedd5; box-shadow: inset 0 1px 2px rgba(0,0,0,0.05);">
+                                <strong style="color: #c2410c; font-size: 0.9rem;">👤 ${pat.name} 様</strong><br>
+                                <span style="font-size: 0.75rem; color: #f97316;">🏡 ご自宅・個人宅</span>
                             </div>
-                            <div style="font-size: 0.75rem; color: #9a3412; padding: 4px;">📍 ご自宅</div>
-                            <div style="font-size: 0.75rem; color: #64748b; padding: 4px;">備考: ${pat.room || '-'}</div>
+                            <div style="padding: 4px; font-size: 0.8rem; color: #4b5563;">
+                                <div style="margin-bottom: 2px;"><strong>所在地:</strong></div>
+                                <div style="line-height: 1.4; color: #1e293b;">${pat.room || '住所情報なし'}</div>
+                            </div>
+                            <div style="margin-top: 8px; text-align: right;">
+                                <a href="https://www.google.com/maps?q=${pat.lat},${pat.lng}" target="_blank" style="font-size: 0.75rem; color: #3b82f6; text-decoration: none;">🌍 Google Mapsで確認</a>
+                            </div>
                         </div>
                     `;
                     
-                    const patHtml = `<div style="background-color: #f97316; color: white; border: 2px solid #ffffff; width: 28px; height: 28px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(249, 115, 22, 0.4); font-size: 14px;">🏡</div>`;
-                    const customIcon = L.divIcon({ html: patHtml, className: '', iconSize: [28, 28], iconAnchor: [14, 14] });
-                    const marker = L.marker([pat.lat, pat.lng], { icon: customIcon }).addTo(facilityLayerGroup);
+                    // 個人宅はオレンジ色のマーカー
+                    const homeHtml = `<div style="background-color: #f97316; color: white; border: 2px solid #ffffff; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(249, 115, 22, 0.5); font-size: 16px;">🏡</div>`;
+                    const customIcon = L.divIcon({ html: homeHtml, className: '', iconSize: [32, 32], iconAnchor: [16, 16] });
+                    const marker = L.marker([pat.lat, pat.lng], { 
+                        icon: customIcon,
+                        draggable: window.isEditMode
+                    }).addTo(facilityLayerGroup);
                     marker.bindPopup(popupContent);
+
+                    // ドラッグ終了時のイベント
+                    marker.on('dragend', function(e) {
+                        const newPos = e.target.getLatLng();
+                        if (confirm(`👤 ${pat.name} 様の新しい位置を保存しますか？`)) {
+                            saveMarkerLocation('patient', pat.id, newPos.lat, newPos.lng);
+                        } else {
+                            renderFacilityMarkers(); // キャンセル時は元の位置に戻す
+                        }
+                    });
                 }
             });
+        };
+
+        // --- 編集モード (Edit Mode) の状態管理と保存機能 ---
+        window.isEditMode = false;
+        
+        window.toggleEditMode = () => {
+            window.isEditMode = !window.isEditMode;
+            const switchEl = document.getElementById('edit-mode-switch');
+            const labelEl = document.getElementById('edit-mode-label');
+            const gridEl = document.getElementById('dashboard-grid');
+            
+            if (window.isEditMode) {
+                switchEl.classList.add('active');
+                labelEl.innerText = 'ON';
+                labelEl.style.color = 'var(--secondary)';
+                gridEl.classList.add('editing-mode');
+                showToast('位置調整モードをONにしました。マーカーをドラッグして位置を修正できます。', 'success');
+                
+                // 地図を見やすくするため、管理モーダルが開いていれば閉じる
+                const manageModal = document.getElementById('manage-modal');
+                if (manageModal && manageModal.classList.contains('active')) {
+                    document.getElementById('btn-close-manage-modal').click();
+                }
+            } else {
+                switchEl.classList.remove('active');
+                labelEl.innerText = 'OFF';
+                labelEl.style.color = 'var(--text-muted)';
+                gridEl.classList.remove('editing-mode');
+            }
+            
+            // マーカーを再描画して draggable 設定を反映
+            renderFacilityMarkers();
+        };
+
+        // マーカー位置の保存処理
+        const saveMarkerLocation = async (type, id, lat, lng) => {
+            const isFacility = type === 'facility';
+            const endpoint = isFacility ? `/api/facilities/${id}` : `/api/patients/${id}`;
+            const bodyData = { lat, lng };
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}${endpoint}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(bodyData)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    showToast('📍 新しい位置を保存しました！');
+                    // データを再読み込みして全体を更新
+                    loadManagementLists(); 
+                } else {
+                    showToast('⚠️ 保存に失敗しました: ' + (result.error || '不明なエラー'), 'error');
+                    renderFacilityMarkers();
+                }
+            } catch (err) {
+                console.error('位置保存エラー:', err);
+                showToast('❌ 通信エラーが発生しました', 'error');
+                renderFacilityMarkers();
+            }
+        };
+
+        // トースト通知の表示ヘルパー
+        window.showToast = (message, type = 'success') => {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerText = message;
+            container.appendChild(toast);
+
+            // アニメーション完了後に削除
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
         };
 
         // --- 位置指定モード (Picking Mode) ---
@@ -1757,7 +1960,7 @@
         window.deleteFacility = async (id) => {
             if (!confirm('この施設を削除してもよろしいですか？（紐づく患者データも削除することを推奨します）')) return;
             try {
-                const response = await fetch(`${API_BASE}/api/facilities/${id}`, { method: 'DELETE' });
+                const response = await fetchWithAuth(`${API_BASE}/api/facilities/${id}`, { method: 'DELETE' });
                 const result = await response.json();
                 if (result.success) {
                     alert('施設を削除しました');
@@ -1771,7 +1974,7 @@
         window.deletePatient = async (id) => {
             if (!confirm('この患者データを削除してもよろしいですか？')) return;
             try {
-                const response = await fetch(`${API_BASE}/api/patients/${id}`, { method: 'DELETE' });
+                const response = await fetchWithAuth(`${API_BASE}/api/patients/${id}`, { method: 'DELETE' });
                 const result = await response.json();
                 if (result.success) {
                     alert('患者を削除しました');
@@ -1787,7 +1990,7 @@
                 return;
             }
             try {
-                const response = await fetch(`${API_BASE}/api/patients/${patientId}`, {
+                const response = await fetchWithAuth(`${API_BASE}/api/patients/${patientId}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ facility_id: newFacilityId })
@@ -1813,7 +2016,7 @@
             if(!facility_id || !id || !name || !room) return alert('入力項目が不足しています。');
             
             try {
-                const response = await fetch(`${API_BASE}/api/patients`, {
+                const response = await fetchWithAuth(`${API_BASE}/api/patients`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ id, facility_id, name, room })
@@ -1885,13 +2088,17 @@
             if (!address) return alert('住所を入力してください');
             
             try {
-                const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent('日本 ' + address)}`);
+                const response = await fetchWithAuth(`${API_BASE}/api/geocode`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ address: address })
+                });
                 const data = await response.json();
-                if (data && data.length > 0) {
-                    document.getElementById('edit-facility-lat').value = parseFloat(data[0].lat).toFixed(6);
-                    document.getElementById('edit-facility-lng').value = parseFloat(data[0].lon).toFixed(6);
+                if (data.success) {
+                    document.getElementById('edit-facility-lat').value = parseFloat(data.lat).toFixed(6);
+                    document.getElementById('edit-facility-lng').value = parseFloat(data.lng).toFixed(6);
                 } else {
-                    alert('位置が特定できませんでした');
+                    alert('位置が特定できませんでした: ' + data.message);
                 }
             } catch (e) { alert('検索エラー'); }
         };
@@ -1907,6 +2114,7 @@
                 url = `${API_BASE}/api/facilities/${id}`;
                 body = {
                     name: document.getElementById('edit-facility-name').value,
+                    address: document.getElementById('edit-facility-address').value,
                     lat: parseFloat(document.getElementById('edit-facility-lat').value),
                     lng: parseFloat(document.getElementById('edit-facility-lng').value)
                 };
@@ -1938,7 +2146,7 @@
         // スタッフの現在地とルートをサーバーから取得して描画
         async function refreshStaffRoute(staffId, date) {
             try {
-                const response = await fetch(`${API_BASE}/api/location?staff_id=${staffId}&date=${date}`);
+                const response = await fetchWithAuth(`${API_BASE}/api/location?staff_id=${staffId}&date=${date}`);
                 const result = await response.json();
                 
                 if (result.success && result.data.length > 0) {
@@ -1975,5 +2183,7 @@
         if (staffData.length > 0) selectStaff(staffData[0]);
 
     </script>
+    <!-- トースト通知用コンテナ -->
+    <div class="toast-container" id="toast-container"></div>
 </body>
 </html>

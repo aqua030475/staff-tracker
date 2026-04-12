@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
@@ -14,6 +15,58 @@ const pool = new Pool({
     ssl: { rejectUnauthorized: false },
     statement_timeout: 10000, // クエリが10秒以上かかる場合は強制終了（ハング防止）
     connectionTimeoutMillis: 5000 // 接続待ちが5秒以上の場合はタイムアウト
+});
+
+// Google Maps API Key
+const GOOGLE_MAPS_API_KEY = process.env.GOOGLE_MAPS_API_KEY;
+
+// 管理者用パスワード (環境変数から取得)
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+
+// 管理者認証ミドルウェア
+const adminAuth = (req, res, next) => {
+    // パスワードが設定されていない場合はスルー（開発用）
+    if (!ADMIN_PASSWORD) return next();
+
+    const providedPassword = req.headers['x-admin-password'];
+    if (providedPassword === ADMIN_PASSWORD) {
+        next();
+    } else {
+        res.status(401).json({ success: false, message: '認証エラー: 管理者パスワードが正しくありません。' });
+    }
+};
+
+// --- Google Maps Geocoding Proxy (管理者認証) ---
+app.post('/api/geocode', adminAuth, async (req, res) => {
+    const { address } = req.body;
+    if (!address) return res.status(400).json({ success: false, message: '住所が指定されていません' });
+
+    if (!GOOGLE_MAPS_API_KEY || GOOGLE_MAPS_API_KEY === 'YOUR_API_KEY_HERE') {
+        console.warn('⚠️ Google Maps API Key is missing in .env');
+        return res.status(500).json({ success: false, message: 'Google APIキーが設定されていません' });
+    }
+
+    try {
+        const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}&language=ja`;
+        const response = await fetch(url);
+        const data = await response.json();
+
+        if (data.status === 'OK') {
+            const location = data.results[0].geometry.location;
+            res.json({
+                success: true,
+                lat: location.lat,
+                lng: location.lng,
+                formatted_address: data.results[0].formatted_address
+            });
+        } else {
+            console.error('Google Geocoding API Error:', data.status, data.error_message);
+            res.json({ success: false, message: `Google APIエラー: ${data.status}` });
+        }
+    } catch (error) {
+        console.error('Geocoding Server Error:', error);
+        res.status(500).json({ success: false, message: 'サーバー内エラーが発生しました' });
+    }
 });
 
 // 初期化処理
@@ -47,15 +100,17 @@ async function initDB() {
         await client.query(`CREATE TABLE IF NOT EXISTS facilities (
             id TEXT PRIMARY KEY,
             name TEXT,
+            address TEXT,
             lat DOUBLE PRECISION,
             lng DOUBLE PRECISION,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )`);
 
-        // カラム型の移行 (REAL -> DOUBLE PRECISION)
+        // カラム型の移行とカラム追加 (Migration)
         try {
             await client.query("ALTER TABLE facilities ALTER COLUMN lat TYPE DOUBLE PRECISION");
             await client.query("ALTER TABLE facilities ALTER COLUMN lng TYPE DOUBLE PRECISION");
+            await client.query("ALTER TABLE facilities ADD COLUMN IF NOT EXISTS address TEXT");
         } catch (e) { }
         
         await client.query(`CREATE TABLE IF NOT EXISTS patients (
@@ -304,8 +359,8 @@ app.get('/api/visits', async (req, res) => {
 // 施設・患者管理API
 // ==========================================
 
-// 施設一覧と紐づく患者一覧を取得するAPI (StaffApp/AdminDashboard用)
-app.get('/api/facilities', async (req, res) => {
+// 施設一覧と紐づく患者一覧を取得するAPI (管理者認証)
+app.get('/api/facilities', adminAuth, async (req, res) => {
     try {
         const facilitiesRes = await pool.query("SELECT * FROM facilities ORDER BY created_at ASC");
         const patientsRes = await pool.query("SELECT * FROM patients ORDER BY created_at ASC");
@@ -335,8 +390,8 @@ app.get('/api/facilities', async (req, res) => {
     }
 });
 
-// 全患者の一覧を取得するAPI
-app.get('/api/patients', async (req, res) => {
+// 全患者の一覧を取得するAPI (管理者認証)
+app.get('/api/patients', adminAuth, async (req, res) => {
     try {
         const result = await pool.query("SELECT * FROM patients ORDER BY created_at ASC");
         res.status(200).json({ success: true, data: result.rows });
@@ -345,8 +400,8 @@ app.get('/api/patients', async (req, res) => {
     }
 });
 
-// 新規施設の追加API
-app.post('/api/facilities', async (req, res) => {
+// 新規施設の追加API (管理者認証)
+app.post('/api/facilities', adminAuth, async (req, res) => {
     const { id, name, lat, lng } = req.body;
     if (!id || !name || lat == null || lng == null) {
          return res.status(400).json({ success: false, message: '必要なデータが不足しています。' });
@@ -365,8 +420,8 @@ app.post('/api/facilities', async (req, res) => {
     }
 });
 
-// 新規患者の追加API
-app.post('/api/patients', async (req, res) => {
+// 新規患者の追加API (管理者認証)
+app.post('/api/patients', adminAuth, async (req, res) => {
     const { id, facility_id, name, room } = req.body;
     if (!id || !facility_id || !name || !room) {
          return res.status(400).json({ success: false, message: '必要なデータが不足しています。' });
@@ -385,8 +440,8 @@ app.post('/api/patients', async (req, res) => {
     }
 });
 
-// 患者更新（所属施設の変更・名前・備考など）API
-app.put('/api/patients/:id', async (req, res) => {
+// 患者更新API (管理者認証)
+app.put('/api/patients/:id', adminAuth, async (req, res) => {
     const { id } = req.params;
     let { facility_id, name, room, lat, lng } = req.body;
 
@@ -413,14 +468,14 @@ app.put('/api/patients/:id', async (req, res) => {
 });
 
 // 施設更新 API
-app.put('/api/facilities/:id', async (req, res) => {
+app.put('/api/facilities/:id', adminAuth, async (req, res) => {
     const { id } = req.params;
-    const { name, lat, lng } = req.body;
-    console.log(`🌐 施設更新リクエスト: ID=${id}, Lat=${lat}, Lng=${lng}`);
+    const { name, address, lat, lng } = req.body;
+    console.log(`🌐 施設更新リクエスト: ID=${id}, Address=${address}, Lat=${lat}, Lng=${lng}`);
     try {
         const result = await pool.query(
-            "UPDATE facilities SET name = COALESCE($1, name), lat = COALESCE($2, lat), lng = COALESCE($3, lng) WHERE id = $4",
-            [name, lat, lng, id]
+            "UPDATE facilities SET name = COALESCE($1, name), address = COALESCE($2, address), lat = COALESCE($3, lat), lng = COALESCE($4, lng) WHERE id = $5",
+            [name, address, lat, lng, id]
         );
         res.status(200).json({ success: true, message: '施設情報を更新しました。' });
     } catch (err) {
@@ -429,8 +484,8 @@ app.put('/api/facilities/:id', async (req, res) => {
     }
 });
 
-// 施設削除API
-app.delete('/api/facilities/:id', async (req, res) => {
+// 施設削除API (管理者認証)
+app.delete('/api/facilities/:id', adminAuth, async (req, res) => {
     const { id } = req.params;
     try {
         await pool.query("DELETE FROM facilities WHERE id = $1", [id]);
@@ -453,18 +508,18 @@ app.delete('/api/patients/:id', async (req, res) => {
 
 // --- 位置情報（ルート）API ---
 
-// 現在地を保存
-app.post('/api/location', async (req, res) => {
-    const { staff_id, staff_name, lat, lng } = req.body;
+// 施設追加 API
+app.post('/api/facilities', async (req, res) => {
+    const { id, name, address, lat, lng } = req.body;
     try {
         await pool.query(
-            "INSERT INTO locations (staff_id, staff_name, lat, lng) VALUES ($1, $2, $3, $4)",
-            [staff_id, staff_name, lat, lng]
+            "INSERT INTO facilities (id, name, address, lat, lng) VALUES ($1, $2, $3, $4, $5)", 
+            [id, name, address, lat, lng]
         );
-        res.status(200).json({ success: true });
+        res.status(200).json({ success: true, message: '施設を追加しました。' });
     } catch (err) {
-        console.error('位置情報保存エラー:', err.message);
-        res.status(500).json({ success: false });
+        console.error('❌ 施設追加エラー:', err.message);
+        res.status(500).json({ success: false, message: '登録エラー' });
     }
 });
 
