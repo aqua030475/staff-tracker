@@ -464,6 +464,7 @@
 
         // --- スタッフ選択ロジック ---
         let currentStaff = null;
+        let activeVisitTimers = {}; // 【新機能】滞在時間を記録するためのタイマー
 
         const loadStaffSelection = async () => {
             const savedStaff = localStorage.getItem('selectedStaff');
@@ -907,6 +908,11 @@
                     
                     if(result.success) {
                         addLog(`🏥 ${currentFacilityName}の記録をサーバーへ保存しました！<br>・${logMessages.join('<br>・')}`, "success");
+                        
+                        // 【新機能】手動で保存したので、自動ログタイマーを解除
+                        if (currentFacilityId) {
+                            delete activeVisitTimers[currentFacilityId];
+                        }
                     } else {
                         addLog(`⚠️ サーバーへの保存に失敗しました: ${result.message}`, "error");
                     }
@@ -976,12 +982,21 @@
                 
                 if (dist <= GEO_SETTINGS.arrivalDistance && !facility.isInside) {
                     facility.isInside = true;
+                    // 【新機能】到着時刻を記録
+                    activeVisitTimers[facility.id] = { arrivalTime: new Date(), name: facility.name };
+                    
                     addLog(`🎯 [自動検知] ${facility.name} への到着をGPSで検知しました！（誤差 ${Math.floor(dist)}m）`, "success");
                     openFacilityModal(facility);
                 } 
                 else if (dist > GEO_SETTINGS.departureDistance && facility.isInside) {
                     facility.isInside = false;
                     addLog(`🚶 [退出検知] ${facility.name} エリアから離れました。`, "success");
+                    
+                    // 【新機能】退出時に未保存なら自動記録を実行
+                    if (activeVisitTimers[facility.id]) {
+                        autoSaveVisit(facility.id, activeVisitTimers[facility.id]);
+                        delete activeVisitTimers[facility.id];
+                    }
                 }
             });
 
@@ -993,11 +1008,16 @@
                     
                     if (dist <= GEO_SETTINGS.arrivalDistance && !patient.isInside) {
                         patient.isInside = true;
+                        
+                        // 【新機能】到着時刻を記録
+                        const virtualId = `home_${patient.id}`;
+                        activeVisitTimers[virtualId] = { arrivalTime: new Date(), name: `${patient.name} 様宅` };
+                        
                         addLog(`🎯 [自動検知] ${patient.name} 様宅への到着をGPSで検知しました！`, "success");
                         
                         // 個人宅用の簡易施設オブジェクトを作成してモーダルを開く
                         const virtualFacility = {
-                            id: `home_${patient.id}`,
+                            id: virtualId,
                             name: `${patient.name} 様宅 (自宅)`,
                             patients: [patient]
                         };
@@ -1005,7 +1025,14 @@
                     }
                     else if (dist > GEO_SETTINGS.departureDistance && patient.isInside) {
                         patient.isInside = false;
+                        const virtualId = `home_${patient.id}`;
                         addLog(`🚶 [退出検知] ${patient.name} 様宅から離れました。`, "success");
+                        
+                        // 【新機能】退出時に未保存なら自動記録を実行
+                        if (activeVisitTimers[virtualId]) {
+                            autoSaveVisit(virtualId, activeVisitTimers[virtualId]);
+                            delete activeVisitTimers[virtualId];
+                        }
                     }
                 });
             });
@@ -1053,6 +1080,46 @@
                 });
             } catch (e) {
                 console.error('位置情報送信失敗:', e);
+            }
+        }
+        // 【新機能】未入力のまま退出した場合の自動保存
+        async function autoSaveVisit(id, timerInfo) {
+            if (!currentStaff) return;
+            
+            const now = new Date();
+            const stayMs = now - timerInfo.arrivalTime;
+            const stayMin = Math.round(stayMs / 60000);
+            
+            // 3分未満の滞在は誤検知（通りがかり）として無視
+            if (stayMin < 3) return;
+
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const timeStr = timerInfo.arrivalTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+            
+            const autoData = {
+                staffName: currentStaff.name.trim(),
+                date: dateStr,
+                visits: [{
+                    time: timeStr,
+                    location: timerInfo.name,
+                    duration: `${stayMin}分`,
+                    category: '自動滞在ログ',
+                    notes: '入力なしのためGPSにより自動記録されました',
+                    images: []
+                }]
+            };
+
+            addLog(`⏱️ [自動ログ] ${timerInfo.name} の滞在時間(${stayMin}分)を自動保存しています...`, "info");
+
+            try {
+                await fetch(`${API_BASE}/api/save-visit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(autoData)
+                });
+                addLog(`✅ [自動完了] ${timerInfo.name} の滞在を記録しました。`, "success");
+            } catch (e) {
+                console.error('AutoSave Error:', e);
             }
         }
 
