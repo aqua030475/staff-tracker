@@ -359,33 +359,46 @@ app.get('/api/visits', async (req, res) => {
 // 施設・患者管理API
 // ==========================================
 
-// 施設一覧と紐づく患者一覧を取得するAPI (管理者認証)
-app.get('/api/facilities', adminAuth, async (req, res) => {
+// 施設一覧と紐づく患者一覧を取得するAPI
+app.get('/api/facilities', async (req, res) => {
     try {
         const facilitiesRes = await pool.query("SELECT * FROM facilities ORDER BY created_at ASC");
-        const patientsRes = await pool.query("SELECT * FROM patients ORDER BY created_at ASC");
         
+        // パスワードチェック (ヘッダーがない、または間違っている場合は簡易データのみ)
+        const isAdmin = ADMIN_PASSWORD && req.headers['x-admin-password'] === ADMIN_PASSWORD;
         const facilities = facilitiesRes.rows;
-        const patients = patientsRes.rows;
 
-        // データを結合して返す
-        const facilitiesWithPatients = facilities.map(f => {
-            return {
+        if (isAdmin) {
+            // 管理者の場合は患者データも含めてフルで返す
+            const patientsRes = await pool.query("SELECT * FROM patients ORDER BY created_at ASC");
+            const patients = patientsRes.rows;
+            const facilitiesWithPatients = facilities.map(f => ({
                 id: f.id,
                 name: f.name,
                 lat: f.lat,
                 lng: f.lng,
-                isInside: false,
+                address: f.address,
                 patients: patients.filter(p => p.facility_id === f.id).map(p => ({
                     id: p.id,
                     name: p.name,
                     room: p.room
                 }))
-            };
-        });
-        res.status(200).json({ success: true, data: facilitiesWithPatients });
+            }));
+            res.status(200).json({ success: true, data: facilitiesWithPatients });
+        } else {
+            // スタッフ用（パスワードなし）の場合は施設名と座標、住所のみ返す
+            const publicFacilities = facilities.map(f => ({
+                id: f.id,
+                name: f.name,
+                lat: f.lat,
+                lng: f.lng,
+                address: f.address,
+                patients: [] // 空にする
+            }));
+            res.status(200).json({ success: true, data: publicFacilities });
+        }
     } catch (err) {
-        console.error('施設・患者取得エラー:', err.message);
+        console.error('施設取得エラー:', err.message);
         res.status(500).json({ success: false, message: 'データベース検索エラー' });
     }
 });
