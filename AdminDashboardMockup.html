@@ -2160,11 +2160,36 @@
                     currentMarkers.forEach(m => map.removeLayer(m));
                     currentMarkers = [];
                     
-                    const lastPoint = latlngs[latlngs.length - 1];
+                    const lastPoint = result.data[result.data.length - 1];
                     const markerHtml = `<div style="background-color: var(--primary); border: 3px solid #fff; width: 22px; height: 22px; border-radius: 50%; box-shadow: 0 0 15px var(--primary); animation: pulse 2s infinite;"></div>`;
                     const customIcon = L.divIcon({ html: markerHtml, className: '', iconSize: [22, 22], iconAnchor: [11, 11] });
-                    const marker = L.marker(lastPoint, {icon: customIcon}).addTo(map);
+                    const marker = L.marker([lastPoint.lat, lastPoint.lng], {icon: customIcon}).addTo(map);
                     currentMarkers.push(marker);
+
+                    // 最後に現在地を送信してからの時間（ミリ秒）
+                    const lastPingTime = new Date(lastPoint.timestamp).getTime();
+                    const now = new Date().getTime();
+                    const diffMins = (now - lastPingTime) / (1000 * 60);
+
+                    // 15分以内の送信ならアクティブと見なす
+                    const targetStaffStrId = String(staffId).trim();
+                    const targetStaff = staffData.find(s => String(s.id).trim() === targetStaffStrId);
+                    
+                    if (targetStaff) {
+                        const oldStatus = targetStaff.status;
+                        if (diffMins < 15) {
+                            targetStaff.status = 'トラッキング中';
+                            targetStaff.isMoving = true;
+                        } else {
+                            targetStaff.status = 'トラッキング停止中';
+                            targetStaff.isMoving = false;
+                        }
+                        
+                        // 状態が変わった場合のみリストを再描画
+                        if (oldStatus !== targetStaff.status) {
+                            renderStaffList();
+                        }
+                    }
 
                     // 最初に開いたときは全体が見えるようにズーム
                     if (!window.hasInitiallyZoomed) {
