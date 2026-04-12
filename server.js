@@ -178,6 +178,15 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(__dirname)); // ローカルHTMLファイルの配信用
+
+// サーバーの起動 (Renderのタイムアウト防止：API定義前にまずポートを確保)
+app.listen(PORT, () => {
+    console.log('=============================================');
+    console.log(`🚀 サーバーが起動しました！ ポート: ${PORT}`);
+    console.log(`   http://localhost:${PORT}/ にて待機中...`);
+    console.log('=============================================');
+});
+
 // ⚠️ 注: uploadsフォルダのマウントは廃止（直接DBからBase64提供に変更）
 
 // --- ページ（HTML）のルート設定 ---
@@ -749,10 +758,4 @@ app.post('/api/batch-import', async (req, res) => {
     }
 });
 
-// サーバーの起動
-app.listen(PORT, () => {
-    console.log('=============================================');
-    console.log(`🚀 サーバーが起動しました！ ポート: ${PORT}`);
-    console.log(`   http://localhost:${PORT}/ にて待機中...`);
-    console.log('=============================================');
-});
+
