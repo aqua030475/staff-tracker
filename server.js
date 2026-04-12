@@ -547,13 +547,37 @@ app.get('/api/location', async (req, res) => {
     }
 });
 
+// スタッフからの位置情報を受信して保存
+app.post('/api/location', async (req, res) => {
+    const { staff_id, staff_name, lat, lng } = req.body;
+    if (!staff_id || lat === undefined || lng === undefined) {
+        return res.status(400).json({ success: false, message: 'データが不完全です' });
+    }
+
+    try {
+        await pool.query(
+            "INSERT INTO locations (staff_id, staff_name, lat, lng) VALUES ($1, $2, $3, $4)",
+            [staff_id, staff_name || '不明', lat, lng]
+        );
+        res.status(200).json({ success: true });
+    } catch (err) {
+        console.error('位置情報保存エラー:', err.message);
+        res.status(500).json({ success: false });
+    }
+});
+
 // --- スタッフ用API ---
 app.get('/api/staff', async (req, res) => {
     try {
-        // 各スタッフの最新の位置情報取得時間を結合して取得
+        // 各スタッフの最新の位置情報取得時間を結合し、15分以内ならアクティブと判定
         const query = `
             SELECT s.*, 
-                   (SELECT MAX(timestamp) FROM locations WHERE staff_id = s.id) as last_seen
+                   (SELECT MAX(timestamp) FROM locations WHERE staff_id = s.id) as last_seen,
+                   EXISTS (
+                       SELECT 1 FROM locations 
+                       WHERE staff_id = s.id 
+                       AND timestamp > NOW() - INTERVAL '15 minutes'
+                   ) as is_active
             FROM staff s 
             ORDER BY s.created_at ASC
         `;

@@ -983,28 +983,11 @@
                 const result = await response.json();
                 
                 if (result.success) {
-                    const now = new Date().getTime();
-                    
                     staffData = result.data.map(s => {
-                        let status = '待機中';
-                        let isMoving = false;
-                        
-                        // 15分以内に位置情報が送られていれば「トラッキング中」
-                        if (s.last_seen) {
-                            const lastSeenTime = new Date(s.last_seen).getTime();
-                            const diffMins = (now - lastSeenTime) / (1000 * 60);
-                            if (diffMins < 15) {
-                                status = 'トラッキング中';
-                                isMoving = true;
-                            } else {
-                                status = 'トラッキング停止中';
-                            }
-                        }
-
                         return {
                             ...s,
-                            status: status,
-                            isMoving: isMoving,
+                            status: s.is_active ? 'トラッキング中' : (s.last_seen ? 'トラッキング停止中' : '待機中'),
+                            isMoving: !!s.is_active,
                             route: [],
                             timeline: []
                         };
@@ -1084,7 +1067,9 @@
             window.hasInitiallyZoomed = false;
             document.getElementById('timeline-title').innerText = `${staff.name} の本日のルート`;
 
-            const today = new Date().toISOString().split('T')[0];
+            // 日本時間での今日の日付（YYYY-MM-DD）を取得
+            const n = new Date();
+            const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
 
             // 📍 走行ルート描画（サーバーの本物データを取得）
             await refreshStaffRoute(staff.id, today);
@@ -2204,13 +2189,8 @@
                     const targetStaff = staffData.find(s => String(s.id).trim() === targetStaffStrId);
                     
                     if (targetStaff) {
-                        if (diffMins < 15) {
-                            targetStaff.status = 'トラッキング中';
-                            targetStaff.isMoving = true;
-                        } else {
-                            targetStaff.status = 'トラッキング停止中';
-                            targetStaff.isMoving = false;
-                        }
+                        targetStaff.status = lastPoint.is_active ? 'トラッキング中' : 'トラッキング停止中';
+                        targetStaff.isMoving = !!lastPoint.is_active;
                     }
 
                     // 最初に開いたときは全体が見えるようにズーム
