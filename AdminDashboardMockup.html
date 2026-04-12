@@ -1395,10 +1395,16 @@
         // タブ切り替えロジック
         document.querySelectorAll('.manage-tab').forEach(tab => {
             tab.addEventListener('click', () => {
+                const tabKey = tab.getAttribute('data-tab');
                 document.querySelectorAll('.manage-tab').forEach(t => t.classList.remove('active'));
                 document.querySelectorAll('.manage-tab-content').forEach(c => c.classList.remove('active'));
                 tab.classList.add('active');
-                document.getElementById(`tab-${tab.dataset.tab}`).classList.add('active');
+                document.getElementById(`tab-${tabKey}`).classList.add('active');
+
+                // 設定タブが選ばれた時は最新設定を読み込む
+                if (tabKey === 'settings') {
+                    loadSystemSettings();
+                }
             });
         });
 
@@ -2243,6 +2249,44 @@
             } finally {
                 btn.innerText = originalText;
                 btn.disabled = false;
+            }
+        };
+
+        // --- システム設定ロジック ---
+        async function loadSystemSettings() {
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/api/settings`);
+                const result = await response.json();
+                if (result.success) {
+                    const settings = result.data;
+                    document.getElementById('setting-google-sheet-url').value = settings.google_sheet_webhook_url || '';
+                }
+            } catch (e) { console.error('設定の読み込みに失敗:', e); }
+        }
+
+        document.getElementById('btn-save-settings').onclick = async () => {
+            const url = document.getElementById('setting-google-sheet-url').value;
+            const btn = document.getElementById('btn-save-settings');
+            btn.disabled = true;
+            btn.innerText = "保存中...";
+
+            try {
+                const response = await fetch(`${API_BASE}/api/settings`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ key: 'google_sheet_webhook_url', value: url })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    showToast('設定を保存しました');
+                } else {
+                    showToast('保存に失敗しました', 'error');
+                }
+            } catch (e) {
+                showToast('通信エラーが発生しました', 'error');
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "設定を保存する";
             }
         };
 
