@@ -331,14 +331,14 @@ app.get('/api/export-sheet', adminAuth, async (req, res) => {
         }
         const webhookUrl = settingsResult.rows[0].value;
 
-        // その日の訪問データを取得
+        // その日の訪問データを取得 (重複を除外し、最新の登録分のみを取得)
         const visitsResult = await pool.query(`
-            SELECT v.*, string_agg(i.image_path, ',') as images 
+            SELECT DISTINCT ON (v.staff_name, v.time_range, v.location) v.*, string_agg(i.image_path, ',') as images 
             FROM visits v 
             LEFT JOIN visit_images i ON v.id = i.visit_id 
             WHERE v.visit_date = $1
             GROUP BY v.id
-            ORDER BY v.staff_name ASC, v.time_range ASC
+            ORDER BY v.staff_name ASC, v.time_range ASC, v.location ASC, v.created_at DESC
         `, [date]);
 
         if (visitsResult.rows.length === 0) {
