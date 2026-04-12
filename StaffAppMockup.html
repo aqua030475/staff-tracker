@@ -436,6 +436,17 @@
         </div>
     </div>
 
+    <!-- 施設手動選択モーダル (GPS無効時のための手動チェックイン用) -->
+    <div id="manual-facility-select-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: white; z-index: 2000; display: none; flex-direction: column; padding: 40px 20px; text-align: center; overflow-y: auto;">
+        <h2 style="margin-bottom: 8px;">訪問先を手動選択</h2>
+        <p style="color: var(--text-muted); margin-bottom: 32px;">GPSが反応しない場合は、ここから訪問先を選んでください</p>
+        <div id="manual-facility-options-container" style="display: flex; flex-direction: column; gap: 12px; text-align: left;">
+            <!-- JSで生成 -->
+        </div>
+        <button id="btn-close-manual-facility" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 24px; box-shadow: none;">閉じる</button>
+    </div>
+
+
     <script>
         const btnStart = document.getElementById('btn-start');
         const btnStop = document.getElementById('btn-stop');
@@ -631,12 +642,34 @@
         // ==================================
         // 施設チェックリスト処理
         // ==================================
+        const manualFacilityModal = document.getElementById('manual-facility-select-modal');
+        const manualFacilityContainer = document.getElementById('manual-facility-options-container');
+
         btnDetectFacility.addEventListener('click', () => {
             if (FACILITIES_DATA.length > 0) {
-                openFacilityModal(FACILITIES_DATA[0]); // 手動デモ用は最初の施設を強制表示
+                manualFacilityContainer.innerHTML = ''; // クリア
+                FACILITIES_DATA.forEach(facility => {
+                    const btn = document.createElement('div');
+                    btn.className = 'staff-opt-btn';
+                    btn.style.textAlign = 'left';
+                    btn.innerHTML = `
+                        <div style="font-weight: 600;">📍 ${facility.name}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${facility.address || '住所未登録'}</div>
+                    `;
+                    btn.onclick = () => {
+                        manualFacilityModal.style.display = 'none';
+                        openFacilityModal(facility);
+                    };
+                    manualFacilityContainer.appendChild(btn);
+                });
+                manualFacilityModal.style.display = 'flex';
             } else {
                 alert('施設データがありません。サーバーに接続できているか、データが登録されているか確認してください。');
             }
+        });
+
+        document.getElementById('btn-close-manual-facility').addEventListener('click', () => {
+            manualFacilityModal.style.display = 'none';
         });
 
         btnCloseFacility.addEventListener('click', () => {
