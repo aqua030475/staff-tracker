@@ -2188,10 +2188,9 @@
                     const targetStaffStrId = String(staffId).trim();
                     const targetStaff = staffData.find(s => String(s.id).trim() === targetStaffStrId);
                     
-                    if (targetStaff) {
-                        targetStaff.status = lastPoint.is_active ? 'トラッキング中' : 'トラッキング停止中';
-                        targetStaff.isMoving = !!lastPoint.is_active;
-                    }
+                    // ルートデータがある＝アクティブとは限らない（今日の過去データかもしれない）
+                    // そのためステータス更新はここではなく、サーバー主導の renderStaffList に任せる
+
 
                     // 最初に開いたときは全体が見えるようにズーム
                     if (!window.hasInitiallyZoomed) {
