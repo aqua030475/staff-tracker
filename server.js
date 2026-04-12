@@ -318,6 +318,65 @@ app.post('/api/save-visit', async (req, res) => {
     }
 });
 
+// 指定した日の全データをスプレッドシートへ再出力するAPI
+app.get('/api/export-sheet', adminAuth, async (req, res) => {
+    const { date } = req.query;
+    if (!date) return res.status(400).json({ success: false, message: '日付が必要です' });
+
+    try {
+        // Webhook URLを取得
+        const settingsResult = await pool.query("SELECT value FROM settings WHERE key = 'google_sheet_webhook_url'");
+        if (settingsResult.rows.length === 0 || !settingsResult.rows[0].value) {
+            return res.status(400).json({ success: false, message: '設定画面でスプレッドシート連携URLを登録してください' });
+        }
+        const webhookUrl = settingsResult.rows[0].value;
+
+        // その日の訪問データを取得
+        const visitsResult = await pool.query(`
+            SELECT v.*, string_agg(i.image_path, ',') as images 
+            FROM visits v 
+            LEFT JOIN visit_images i ON v.id = i.visit_id 
+            WHERE v.visit_date = $1
+            GROUP BY v.id
+            ORDER BY v.staff_name ASC, v.time_range ASC
+        `, [date]);
+
+        if (visitsResult.rows.length === 0) {
+            return res.status(404).json({ success: false, message: '該当日付のデータがありません' });
+        }
+
+        // スタッフごとにデータをまとめて送信
+        const grouped = {};
+        visitsResult.rows.forEach(r => {
+            if (!grouped[r.staff_name]) grouped[r.staff_name] = [];
+            grouped[r.staff_name].push(r);
+        });
+
+        for (const staffName in grouped) {
+            await fetch(webhookUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    staffName: staffName,
+                    date: date,
+                    visits: grouped[staffName].map(v => ({
+                        time: v.time_range,
+                        location: v.location,
+                        duration: v.duration,
+                        category: v.category,
+                        notes: v.notes
+                    }))
+                })
+            });
+        }
+
+        res.json({ success: true, message: 'スプレッドシートへの出力が完了しました' });
+    } catch (err) {
+        console.error('Export Error:', err);
+        res.status(500).json({ success: false, message: 'エクスポート中にエラーが発生しました' });
+    }
+});
+
 // 訪問履歴の検索API (画像データも結合して取得)
 app.get('/api/visits', async (req, res) => {
     const { staffName, date, patientName } = req.query;

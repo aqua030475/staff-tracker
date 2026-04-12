@@ -522,11 +522,12 @@
     <main class="main-content">
         <header class="header">
             <h2 style="font-size: 1.2rem; font-weight: 600;">行動履歴ダッシュボード</h2>
-            <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="display: flex; align-items: center; gap: 15px;">
                 <button id="btn-open-manage" class="btn-primary" style="background-color: #8b5cf6;">🏢 施設管理</button>
                 <button id="btn-open-search" class="btn-primary" style="background-color: var(--secondary);">🔍 履歴検索</button>
+                <button id="btn-export-sheet" class="btn-primary" style="background-color: #10b981;">🟢 シートへ出力</button>
                 <button id="btn-generate-report" class="btn-primary">📝 日報自動生成</button>
-                <div style="font-size: 0.9rem; color: var(--text-muted);">
+                <div style="font-size: 0.9rem; color: var(--text-muted); margin-left: 10px;">
                     最終更新: <span id="current-time"></span>
                 </div>
             </div>
@@ -2202,6 +2203,48 @@
                 console.error('位置情報の取得に失敗:', e);
             }
         }
+
+        // トースト通知を表示
+        function showToast(message, type = 'success') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.innerText = message;
+            container.appendChild(toast);
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+
+        // スプレッドシート出力ボタン
+        document.getElementById('btn-export-sheet').onclick = async () => {
+            const n = new Date();
+            const today = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
+            const targetDate = prompt("出力する日付を入力してください (YYYY-MM-DD)", today);
+            
+            if (!targetDate) return;
+
+            const btn = document.getElementById('btn-export-sheet');
+            const originalText = btn.innerText;
+            btn.innerText = "出力中...";
+            btn.disabled = true;
+
+            try {
+                const response = await fetchWithAuth(`${API_BASE}/api/export-sheet?date=${targetDate}`);
+                const result = await response.json();
+                if (result.success) {
+                    showToast(result.message, 'success');
+                } else {
+                    showToast(result.message, 'error');
+                }
+            } catch (e) {
+                showToast('通信エラーが発生しました', 'error');
+                console.error(e);
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        };
 
         // 初期表示
         renderStaffList();
