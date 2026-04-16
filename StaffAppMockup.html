@@ -729,6 +729,19 @@
                     cameraInput.click();
                 });
             });
+
+            // 選択解除ボタンのイベント
+            document.querySelectorAll('.btn-clear-selection').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const id = e.target.closest('.btn-clear-selection').dataset.id;
+                    const checkbox = document.querySelector(`.patient-checkbox[data-id="${id}"]`);
+                    if (checkbox) {
+                        checkbox.checked = false;
+                        // 手動でchangeイベントを発火させてUIを更新（開閉など）
+                        checkbox.dispatchEvent(new Event('change'));
+                    }
+                });
+            });
         };
 
         // カメラ入力の変更イベント（画像リサイズと保存）
@@ -835,6 +848,10 @@
                         <button class="btn-camera" data-id="${p.id}">
                             <span>📷 写真を追加</span>
                         </button>
+                        <hr style="margin: 16px 0; border: 0; border-top: 1px solid var(--border);">
+                        <button class="btn-clear-selection" data-id="${p.id}" style="width: 100%; background: #fff5f5; color: var(--danger); border: 1px solid #fecaca; padding: 10px; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; justify-content: center; align-items: center; gap: 8px;">
+                            <span>❌ この患者の選択を解除する</span>
+                        </button>
                     </div>
                 </div>`;
                 patientListContainer.innerHTML += itemHTML;
@@ -848,6 +865,11 @@
             
             // モーダルを表示
             facilityModal.style.display = 'flex';
+
+            // 【新機能】到着をバイブレーションで通知
+            if (navigator.vibrate) {
+                navigator.vibrate([200, 100, 200]);
+            }
         };
 
         btnSavePatients.addEventListener('click', async () => {
@@ -925,8 +947,39 @@
                     facilityModal.style.display = 'none';
                 }
             } else {
-                addLog(`⚠️ 患者が選択されませんでした。`, "error");
-                facilityModal.style.display = 'none';
+                // 患者未選択の場合の警告
+                if (confirm('患者様が一人も選択されていません。訪問（施設滞在）の記録のみを残しますか？')) {
+                    // 滞在記録のみを自動保存ロジックと同様に作成して送信
+                    const now = new Date();
+                    const timerInfo = activeVisitTimers[currentFacilityId] || activeVisitTimers[`home_${currentFacilityId}`];
+                    const stayMin = timerInfo ? Math.round((now - timerInfo.arrivalTime) / 60000) : 0;
+                    
+                    const emptyVisitData = {
+                        staffName: staffName,
+                        date: dateStr,
+                        visits: [{
+                            time: timeStr,
+                            location: currentFacilityName,
+                            duration: stayMin > 0 ? `${stayMin}分` : 'チェックインのみ',
+                            category: '訪問記録（詳細なし）',
+                            notes: '患者選択なしで手動保存されました',
+                            images: []
+                        }]
+                    };
+
+                    try {
+                        await fetch(`${API_BASE}/api/save-visit`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(emptyVisitData)
+                        });
+                        addLog(`📍 ${currentFacilityName} の滞在記録のみを保存しました。`, "success");
+                        if (currentFacilityId) delete activeVisitTimers[currentFacilityId];
+                        facilityModal.style.display = 'none';
+                    } catch (e) {
+                        addLog('⚠️ 保存に失敗しました。', 'error');
+                    }
+                }
             }
         });
 
@@ -1002,6 +1055,9 @@
 
             // 本物のジオフェンス判定 (個人宅)
             FACILITIES_DATA.forEach(facility => {
+                // 施設に所属する患者の場合（個人宅ではない場合）は、個別判定をスキップする
+                if (facility.id !== 'home') return; 
+
                 facility.patients.forEach(patient => {
                     if (!patient.lat || !patient.lng) return;
                     const dist = calculateDistance(lat, lng, patient.lat, patient.lng);
@@ -1096,6 +1152,14 @@
             const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
             const timeStr = timerInfo.arrivalTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
             
+            // 【新機能】その施設に登録されている患者名をリストアップして備考に追加（忘れ防止）
+            let uncheckedPatients = "";
+            const facility = FACILITIES_DATA.find(f => f.id === id || `home_${f.id.split('_')[1]}` === id);
+            if (facility && facility.patients && facility.patients.length > 0) {
+                const names = facility.patients.map(p => p.name.replace(' 様', '')).join('、');
+                uncheckedPatients = `\n(未チェック候補: ${names})`;
+            }
+
             const autoData = {
                 staffName: currentStaff.name.trim(),
                 date: dateStr,
@@ -1104,7 +1168,7 @@
                     location: timerInfo.name,
                     duration: `${stayMin}分`,
                     category: '自動滞在ログ',
-                    notes: '入力なしのためGPSにより自動記録されました',
+                    notes: '入力なしのためGPSにより自動記録されました' + uncheckedPatients,
                     images: []
                 }]
             };

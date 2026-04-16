@@ -424,6 +424,18 @@ app.get('/api/visits', async (req, res) => {
     }
 });
 
+// 訪問記録の削除API (管理者認証)
+app.delete('/api/visits/:id', adminAuth, async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query("DELETE FROM visits WHERE id = $1", [id]);
+        res.status(200).json({ success: true, message: '訪問記録を削除しました。' });
+    } catch (err) {
+        console.error('❌ 訪問記録削除エラー:', err.message);
+        res.status(500).json({ success: false, message: '削除エラー', error: err.message });
+    }
+});
+
 // ==========================================
 // 施設・患者管理API
 // ==========================================
