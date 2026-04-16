@@ -576,10 +576,53 @@
                 const response = await fetch(`${API_BASE}/api/facilities`);
                 const result = await response.json();
                 if (result.success) {
-                    FACILITIES_DATA = result.data;
+                    let rawData = result.data;
+                    let processedData = [];
+                    let homePatients = [];
+
+                    // 1. データ振り分け (個人宅と通常施設)
+                    rawData.forEach(f => {
+                        if (f.id === 'home') {
+                            homePatients = f.patients || [];
+                        } else {
+                            if (f.lat && f.lng) processedData.push(f);
+                        }
+                    });
+
+                    // 2. 個人宅の患者を同じ座標でグループ化
+                    const homeGroups = {};
+                    homePatients.forEach(p => {
+                        if (!p.lat || !p.lng) return;
+                        const key = `${p.lat}_${p.lng}`;
+                        if (!homeGroups[key]) {
+                            homeGroups[key] = {
+                                patients: [],
+                                lat: p.lat,
+                                lng: p.lng
+                            };
+                        }
+                        homeGroups[key].patients.push(p);
+                    });
+
+                    // 3. グループ化されたご自宅を仮想の「施設」として登録
+                    Object.keys(homeGroups).forEach((key, index) => {
+                        const group = homeGroups[key];
+                        // 例：「宮地 正人・宮地 雅子 様ご自宅」のように名前を結合
+                        const names = group.patients.map(p => p.name.replace(' 様', '').trim()).join('・');
+                        processedData.push({
+                            id: `home_group_${index}`,
+                            name: `${names} 様ご自宅`,
+                            lat: group.lat,
+                            lng: group.lng,
+                            address: group.patients[0].address || '個人宅',
+                            patients: group.patients
+                        });
+                    });
+
+                    FACILITIES_DATA = processedData;
                     console.log('✅ 施設データをサーバーから読み込みました:', FACILITIES_DATA);
                     if (FACILITIES_DATA.length === 0) {
-                        addLog('⚠️ 施設データがありません。ダッシュボードから登録してください。', 'error');
+                        addLog('⚠️ 有効な座標を持つ施設・患者データがありません。', 'error');
                     }
                 }
             } catch (error) {
@@ -688,41 +731,19 @@
             if (FACILITIES_DATA.length > 0) {
                 manualFacilityContainer.innerHTML = ''; // クリア
                 FACILITIES_DATA.forEach(facility => {
-                    if (facility.id === 'home') {
-                        // 個人宅の場合は各患者をそれぞれボタンにする
-                        facility.patients.forEach(patient => {
-                            const btn = document.createElement('div');
-                            btn.className = 'staff-opt-btn';
-                            btn.style.textAlign = 'left';
-                            btn.innerHTML = `
-                                <div style="font-weight: 600;">🏠 ${patient.name} 様 ご自宅</div>
-                                <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${patient.address || '個人宅'}</div>
-                            `;
-                            btn.onclick = () => {
-                                manualFacilityModal.style.display = 'none';
-                                openFacilityModal({
-                                    id: 'home',
-                                    name: `${patient.name} 様ご自宅`,
-                                    patients: [patient]
-                                });
-                            };
-                            manualFacilityContainer.appendChild(btn);
-                        });
-                    } else {
-                        // 通常の施設
-                        const btn = document.createElement('div');
-                        btn.className = 'staff-opt-btn';
-                        btn.style.textAlign = 'left';
-                        btn.innerHTML = `
-                            <div style="font-weight: 600;">📍 ${facility.name}</div>
-                            <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${facility.address || '住所未登録'}</div>
-                        `;
-                        btn.onclick = () => {
-                            manualFacilityModal.style.display = 'none';
-                            openFacilityModal(facility);
-                        };
-                        manualFacilityContainer.appendChild(btn);
-                    }
+                    const btn = document.createElement('div');
+                    btn.className = 'staff-opt-btn';
+                    btn.style.textAlign = 'left';
+                    const icon = facility.id.startsWith('home_group') ? '🏠' : '📍';
+                    btn.innerHTML = `
+                        <div style="font-weight: 600;">${icon} ${facility.name}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); font-weight: normal; margin-top: 4px;">${facility.address || '個人宅/住所未登録'}</div>
+                    `;
+                    btn.onclick = () => {
+                        manualFacilityModal.style.display = 'none';
+                        openFacilityModal(facility);
+                    };
+                    manualFacilityContainer.appendChild(btn);
                 });
                 manualFacilityModal.style.display = 'flex';
             } else {
@@ -1116,14 +1137,14 @@
                 return;
             }
 
-            // 本物のジオフェンス判定 (施設)
+            // ジオフェンス判定 (施設およびグループ化されたご自宅)
             FACILITIES_DATA.forEach(facility => {
-                if (!facility.lat || !facility.lng || facility.id === 'home') return;
+                if (!facility.lat || !facility.lng) return;
                 const dist = calculateDistance(lat, lng, facility.lat, facility.lng);
                 
                 if (dist <= GEO_SETTINGS.arrivalDistance && !facility.isInside) {
                     facility.isInside = true;
-                    // 【新機能】到着時刻を記録
+                    // 到着時刻を記録
                     activeVisitTimers[facility.id] = { arrivalTime: new Date(), name: facility.name };
                     
                     addLog(`🎯 [自動検知] ${facility.name} への到着をGPSで検知しました！（誤差 ${Math.floor(dist)}m）`, "success");
@@ -1133,52 +1154,12 @@
                     facility.isInside = false;
                     addLog(`🚶 [退出検知] ${facility.name} エリアから離れました。`, "success");
                     
-                    // 【新機能】退出時に未保存なら自動記録を実行
+                    // 退出時に未保存なら自動記録を実行
                     if (activeVisitTimers[facility.id]) {
                         autoSaveVisit(facility.id, activeVisitTimers[facility.id]);
                         delete activeVisitTimers[facility.id];
                     }
                 }
-            });
-
-            // 本物のジオフェンス判定 (個人宅)
-            FACILITIES_DATA.forEach(facility => {
-                // 施設に所属する患者の場合（個人宅ではない場合）は、個別判定をスキップする
-                if (facility.id !== 'home') return; 
-
-                facility.patients.forEach(patient => {
-                    if (!patient.lat || !patient.lng) return;
-                    const dist = calculateDistance(lat, lng, patient.lat, patient.lng);
-                    
-                    if (dist <= GEO_SETTINGS.arrivalDistance && !patient.isInside) {
-                        patient.isInside = true;
-                        
-                        // 【新機能】到着時刻を記録
-                        const virtualId = `home_${patient.id}`;
-                        activeVisitTimers[virtualId] = { arrivalTime: new Date(), name: `${patient.name} 様宅` };
-                        
-                        addLog(`🎯 [自動検知] ${patient.name} 様宅への到着をGPSで検知しました！`, "success");
-                        
-                        // 個人宅用の簡易施設オブジェクトを作成してモーダルを開く
-                        const virtualFacility = {
-                            id: virtualId,
-                            name: `${patient.name} 様宅 (自宅)`,
-                            patients: [patient]
-                        };
-                        openFacilityModal(virtualFacility);
-                    }
-                    else if (dist > GEO_SETTINGS.departureDistance && patient.isInside) {
-                        patient.isInside = false;
-                        const virtualId = `home_${patient.id}`;
-                        addLog(`🚶 [退出検知] ${patient.name} 様宅から離れました。`, "success");
-                        
-                        // 【新機能】退出時に未保存なら自動記録を実行
-                        if (activeVisitTimers[virtualId]) {
-                            autoSaveVisit(virtualId, activeVisitTimers[virtualId]);
-                            delete activeVisitTimers[virtualId];
-                        }
-                    }
-                });
             });
         };
 
