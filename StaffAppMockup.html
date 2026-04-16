@@ -883,6 +883,15 @@
             // 選択されたスタッフ名を使用 (空白をトリミングして一致精度を向上)
             const staffName = currentStaff ? currentStaff.name.trim() : "不明なスタッフ";
             
+            // 滞在時間の計算 (到着検知タイマーがある場合)
+            const timerInfo = activeVisitTimers[currentFacilityId];
+            let stayDuration = 'チェックイン済み';
+            if (timerInfo && timerInfo.arrivalTime) {
+                const stayMs = new Date() - timerInfo.arrivalTime;
+                const stayMin = Math.round(stayMs / 60000);
+                if (stayMin > 0) stayDuration = `${stayMin}分`;
+            }
+
             checkboxes.forEach(cb => {
                 const name = cb.value;
                 const id = cb.dataset.id;
@@ -902,7 +911,7 @@
                 visitsData.push({
                     time: timeStr,
                     location: `${currentFacilityName} (${name} 様)`,
-                    duration: 'チェックイン済み',
+                    duration: stayDuration,
                     category: '訪問実績',
                     notes: notes,
                     images: photos
