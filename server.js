@@ -354,21 +354,50 @@ app.get('/api/export-sheet', adminAuth, async (req, res) => {
             return res.status(404).json({ success: false, message: '該当日付のデータがありません' });
         }
 
-        // スタッフごとにデータをまとめて送信
+        // 時刻文字列を比較用に正規化する関数 (8:51 -> 08:51)
+        const normalizeTime = (t) => {
+            if (!t) return '99:99';
+            const timePart = t.split(' ')[0]; // "10:00 - 11:00" のような形式に対応
+            const parts = timePart.split(':');
+            if (parts.length < 2) return timePart;
+            return parts[0].padStart(2, '0') + ':' + parts[1].padStart(2, '0');
+        };
+
+        // スタッフごとにデータをまとめて保持
         const grouped = {};
         visitsResult.rows.forEach(r => {
-            if (!grouped[r.staff_name]) grouped[r.staff_name] = [];
-            grouped[r.staff_name].push(r);
+            if (!grouped[r.staff_name]) {
+                grouped[r.staff_name] = {
+                    visits: [],
+                    earliestTime: '99:99'
+                };
+            }
+            const normTime = normalizeTime(r.time_range);
+            if (normTime < grouped[r.staff_name].earliestTime) {
+                grouped[r.staff_name].earliestTime = normTime;
+            }
+            grouped[r.staff_name].visits.push(r);
         });
 
-        for (const staffName in grouped) {
+        // スタッフのリストを「最初の訪問時刻」順に並び替え
+        const sortedStaffNames = Object.keys(grouped).sort((a, b) => {
+            return grouped[a].earliestTime.localeCompare(grouped[b].earliestTime);
+        });
+
+        // 並び替えた順にWebhookへ送信
+        for (const staffName of sortedStaffNames) {
+            const staffData = grouped[staffName];
+            
+            // スタッフ内の訪問データも時刻順にソート
+            staffData.visits.sort((a, b) => normalizeTime(a.time_range).localeCompare(normalizeTime(b.time_range)));
+
             await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     staffName: staffName,
                     date: date,
-                    visits: grouped[staffName].map(v => ({
+                    visits: staffData.visits.map(v => ({
                         time: v.time_range,
                         location: v.location,
                         duration: v.duration,
