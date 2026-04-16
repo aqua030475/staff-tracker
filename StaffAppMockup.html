@@ -99,6 +99,37 @@
             animation: pulse 1.5s infinite;
         }
 
+        /* GPS警告オーバーレイ */
+        #gps-lock-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(239, 68, 68, 0.98);
+            z-index: 99999;
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            padding: 30px;
+        }
+        .gps-lock-icon {
+            font-size: 80px;
+            margin-bottom: 20px;
+        }
+        .gps-lock-title {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 15px;
+        }
+        .gps-lock-text {
+            font-size: 1.1rem;
+            line-height: 1.6;
+        }
+
         .btn {
             display: block;
             width: 100%;
@@ -347,6 +378,18 @@
     </style>
 </head>
 <body>
+    <!-- GPS警告オーバーレイ -->
+    <div id="gps-lock-overlay">
+        <div class="gps-lock-icon">📡❌</div>
+        <div class="gps-lock-title">GPSをONにしてください</div>
+        <div class="gps-lock-text">
+            位置情報がオフ、または許可されていません。<br>
+            設定から位置情報を「有効」にしてください。<br>
+            <br>
+            <span style="font-size: 0.9rem; opacity: 0.8;">※GPSが有効になるまでアプリは使用できません。</span>
+        </div>
+    </div>
+
     <header>
         <div id="header-staff-name">スタッフ用トラッカー</div>
         <div class="switch-staff-link" id="btn-switch-staff" style="font-size: 0.85rem; margin-top: 4px; text-decoration: underline;">別のスタッフで利用する</div>
@@ -1014,12 +1057,48 @@
             departureDistance: 100  // 退出と判定する距離(m)
         };
 
+        // GPS警告の排他制御用フラグ
+        let isGpsErrorLogged = false;
+
+        // サーバーへシステム異常ログを送信
+        async function sendSystemLog(message) {
+            if (!currentStaff) return;
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+            
+            try {
+                await fetch(`${API_BASE}/api/save-visit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        staffName: currentStaff.name,
+                        date: dateStr,
+                        visits: [{
+                            time: timeStr,
+                            location: '⚠️ GPS遮断検知',
+                            duration: '-',
+                            category: 'システム警告',
+                            notes: message,
+                            images: []
+                        }]
+                    })
+                });
+            } catch (e) {
+                console.error('システムログ送信失敗:', e);
+            }
+        }
+
         // 位置取得成功時
         const successCallback = (position) => {
             const lat = position.coords.latitude;
             const lng = position.coords.longitude;
             const acc = position.coords.accuracy;
             
+            // 警告画面を隠す
+            document.getElementById('gps-lock-overlay').style.display = 'none';
+            isGpsErrorLogged = false;
+
             // 画面表示更新
             document.getElementById('val-lat').innerText = lat.toFixed(6);
             document.getElementById('val-lng').innerText = lng.toFixed(6);
@@ -1106,14 +1185,24 @@
         // 位置取得エラー時
         const errorCallback = (error) => {
             let errorMsg = "位置情報エラー: ";
+            const overlay = document.getElementById('gps-lock-overlay');
+            
             switch(error.code) {
                 case error.PERMISSION_DENIED:
                     errorMsg += "許可が拒否されました。";
-                    permissionAlert.style.display = 'block';
-                    btnStop.click(); // 強制停止
+                    overlay.style.display = 'flex';
+                    if (!isGpsErrorLogged) {
+                        sendSystemLog('位置情報の許可が拒否されました（OFFに設定されました）');
+                        isGpsErrorLogged = true;
+                    }
                     break;
                 case error.POSITION_UNAVAILABLE:
                     errorMsg += "位置情報が取得できません。";
+                    overlay.style.display = 'flex';
+                    if (!isGpsErrorLogged) {
+                        sendSystemLog('位置情報が利用不可になりました（GPS信号断、またはOFF）');
+                        isGpsErrorLogged = true;
+                    }
                     break;
                 case error.TIMEOUT:
                     errorMsg += "タイムアウトしました。";
