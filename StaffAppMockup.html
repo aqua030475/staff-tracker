@@ -577,52 +577,85 @@
                 const result = await response.json();
                 if (result.success) {
                     let rawData = result.data;
-                    let processedData = [];
-                    let homePatients = [];
+                    let locationGroups = {}; // 座標をキーにしたグループ化用
 
-                    // 1. データ振り分け (個人宅と通常施設)
+                    // 1. 全てのデータ（施設・個人宅）を座標でグループ化
                     rawData.forEach(f => {
+                        let entities = [];
                         if (f.id === 'home') {
-                            homePatients = f.patients || [];
+                            entities = f.patients || [];
                         } else {
-                            if (f.lat && f.lng) processedData.push(f);
+                            // 施設自体も座標があればリストに追加
+                            if (f.lat && f.lng) entities = [f];
                         }
+
+                        entities.forEach(entity => {
+                            if (!entity.lat || !entity.lng) return;
+                            // 座標をキーにする（小数点6位までで固定して誤差を吸収）
+                            const key = `${parseFloat(entity.lat).toFixed(6)}_${parseFloat(entity.lng).toFixed(6)}`;
+                            
+                            if (!locationGroups[key]) {
+                                locationGroups[key] = {
+                                    lat: parseFloat(entity.lat),
+                                    lng: parseFloat(entity.lng),
+                                    facilities: [],
+                                    individualPatients: []
+                                };
+                            }
+
+                            if (entity.id && entity.patients) {
+                                // これは「施設」オブジェクト
+                                locationGroups[key].facilities.push(entity);
+                            } else {
+                                // これは「個人宅の患者」オブジェクト
+                                locationGroups[key].individualPatients.push(entity);
+                            }
+                        });
                     });
 
-                    // 2. 個人宅の患者を同じ座標でグループ化
-                    const homeGroups = {};
-                    homePatients.forEach(p => {
-                        if (!p.lat || !p.lng) return;
-                        const key = `${p.lat}_${p.lng}`;
-                        if (!homeGroups[key]) {
-                            homeGroups[key] = {
-                                patients: [],
-                                lat: p.lat,
-                                lng: p.lng
-                            };
-                        }
-                        homeGroups[key].patients.push(p);
-                    });
+                    // 2. グループ化されたデータをアプリ用の「施設データ」に変換
+                    let processedData = [];
+                    Object.keys(locationGroups).forEach((key, index) => {
+                        const group = locationGroups[key];
+                        let combinedName = "";
+                        let combinedPatients = [];
+                        let representativeAddress = "";
 
-                    // 3. グループ化されたご自宅を仮想の「施設」として登録
-                    Object.keys(homeGroups).forEach((key, index) => {
-                        const group = homeGroups[key];
-                        // 例：「宮地 正人・宮地 雅子 様ご自宅」のように名前を結合
-                        const names = group.patients.map(p => p.name.replace(' 様', '').trim()).join('・');
+                        // 施設の名前と患者を統合
+                        if (group.facilities.length > 0) {
+                            combinedName = group.facilities.map(f => f.name).join('・');
+                            representativeAddress = group.facilities[0].address || "";
+                            group.facilities.forEach(f => {
+                                if (f.patients) combinedPatients = combinedPatients.concat(f.patients);
+                            });
+                        }
+
+                        // 個人宅の患者も統合
+                        if (group.individualPatients.length > 0) {
+                            const pNames = group.individualPatients.map(p => p.name.replace(' 様', '').trim()).join('・') + " 様宅";
+                            if (combinedName) {
+                                combinedName += ` (${pNames})`;
+                            } else {
+                                combinedName = pNames;
+                                representativeAddress = group.individualPatients[0].address || "個人宅";
+                            }
+                            combinedPatients = combinedPatients.concat(group.individualPatients);
+                        }
+
                         processedData.push({
-                            id: `home_group_${index}`,
-                            name: `${names} 様ご自宅`,
+                            id: `grouped_loc_${index}`,
+                            name: combinedName,
                             lat: group.lat,
                             lng: group.lng,
-                            address: group.patients[0].address || '個人宅',
-                            patients: group.patients
+                            address: representativeAddress || "住所情報なし",
+                            patients: combinedPatients
                         });
                     });
 
                     FACILITIES_DATA = processedData;
-                    console.log('✅ 施設データをサーバーから読み込みました:', FACILITIES_DATA);
+                    console.log('✅ 全ての場所を座標ベースで統合しました:', FACILITIES_DATA);
                     if (FACILITIES_DATA.length === 0) {
-                        addLog('⚠️ 有効な座標を持つ施設・患者データがありません。', 'error');
+                        addLog('⚠️ 有効な座標を持つデータがありません。', 'error');
                     }
                 }
             } catch (error) {
