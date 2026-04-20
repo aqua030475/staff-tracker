@@ -254,6 +254,65 @@ app.post('/api/send-report', async (req, res) => {
     }
 });
 
+// AIによるカルテ清書APIエンドポイント
+app.post('/api/format-medical-record', async (req, res) => {
+    const { rawMemo, patientName } = req.body;
+    const apiKey = process.env.GEMINI_API_KEY;
+
+    if (!rawMemo) {
+        return res.status(400).json({ success: false, message: 'メモが空欄です' });
+    }
+
+    if (!apiKey) {
+        return res.status(500).json({ success: false, message: 'サーバーにAI連携用のAPIキーが設定されていません' });
+    }
+
+    const prompt = `あなたはプロの鍼灸マッサージ師です。
+提供された「音声入力メモ」を解析し、医師閲覧用の臨床記録に変換してください。
+
+【変換ルール】
+1. 「えー」「あのー」などの不要な語句は完全削除。
+2. 「〜と言っている」「〜みたい」などの曖昧な表現、伝聞表現は「〜を自覚」「〜を認める」等の医学的客観表現、または体言止めに変換。
+3. 挨拶や感想、今後の推奨は一切含めない。
+4. 箇条書き（■）の形式を厳守。
+
+【形式】
+■施術前の状態
+(内容)
+■施術内容
+(内容)
+■施術後の変化
+(内容)
+
+【音声入力メモ】
+${rawMemo}
+(患者名: ${patientName || '不明'})`;
+
+    try {
+        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                contents: [{ parts: [{ text: prompt }] }]
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.error) {
+            console.error('Gemini API Error:', data.error);
+            return res.status(500).json({ success: false, message: 'AIの解析中にエラーが発生しました', error: data.error.message });
+        }
+
+        const formattedText = data.candidates[0].content.parts[0].text;
+        res.json({ success: true, formattedText });
+
+    } catch (error) {
+        console.error('AI Processing Error:', error);
+        res.status(500).json({ success: false, message: '通信エラーが発生しました', error: error.message });
+    }
+});
+
 // スタッフアプリからの直接データ保存API
 app.post('/api/save-visit', async (req, res) => {
     const { staffName, date, visits } = req.body;
@@ -338,34 +397,50 @@ app.get('/api/export-sheet', adminAuth, async (req, res) => {
         if (settingsResult.rows.length === 0 || !settingsResult.rows[0].value) {
             return res.status(400).json({ success: false, message: '設定画面でスプレッドシート連携URLを登録してください' });
         }
-        const webhookUrl = settingsResult.rows[0].value;
+        const date = req.query.date;
+        const targetStaffName = req.query.staffName; // 指定されたスタッフのみ書き出すためのオプション
+        if (!date) return res.status(400).json({ success: false, message: '日付を指定してください' });
 
         // その日の訪問データを取得 (重複を除外し、最新の登録分のみを取得)
-        const visitsResult = await pool.query(`
+        let queryText = `
             SELECT DISTINCT ON (v.staff_name, v.time_range, v.location) v.*, string_agg(i.image_path, ',') as images 
             FROM visits v 
             LEFT JOIN visit_images i ON v.id = i.visit_id 
             WHERE v.visit_date = $1
-            GROUP BY v.id
-            ORDER BY v.staff_name ASC, v.time_range ASC, v.location ASC, v.created_at DESC
-        `, [date]);
+        `;
+        let queryParams = [date];
+
+        if (targetStaffName) {
+            queryText += ` AND v.staff_name = $2`;
+            queryParams.push(targetStaffName);
+        }
+
+        queryText += ` GROUP BY v.id ORDER BY v.staff_name ASC, v.time_range ASC, v.location ASC, v.created_at DESC`;
+
+        const visitsResult = await pool.query(queryText, queryParams);
 
         if (visitsResult.rows.length === 0) {
             return res.status(404).json({ success: false, message: '該当日付のデータがありません' });
         }
 
-        // 時刻文字列を比較用に正規化する関数 (8:51 -> 08:51)
+        // 時刻文字列を比較用に正規化する関数 (8:51 -> 08:51, " 9:00" -> "09:00")
         const normalizeTime = (t) => {
-            if (!t) return '99:99';
-            const timePart = t.split(' ')[0]; // "10:00 - 11:00" のような形式に対応
+            if (!t || typeof t !== 'string') return '99:99';
+            const cleanT = t.trim();
+            if (!cleanT) return '99:99';
+            
+            const timePart = cleanT.split(/[\s-]/)[0]; // "10:00 - 11:00" や "10:00" に対応
             const parts = timePart.split(':');
-            if (parts.length < 2) return timePart;
+            if (parts.length < 2) return timePart.padStart(5, '0');
             return parts[0].padStart(2, '0') + ':' + parts[1].padStart(2, '0');
         };
 
+        // 訪問データを一度すべて取得し、メモリ上で正確に並び替える
+        const rawVisits = visitsResult.rows;
+
         // スタッフごとにデータをまとめて保持
         const grouped = {};
-        visitsResult.rows.forEach(r => {
+        rawVisits.forEach(r => {
             if (!grouped[r.staff_name]) {
                 grouped[r.staff_name] = {
                     visits: [],
@@ -379,18 +454,28 @@ app.get('/api/export-sheet', adminAuth, async (req, res) => {
             grouped[r.staff_name].visits.push(r);
         });
 
-        // スタッフのリストを「最初の訪問時刻」順に並び替え
+        // スタッフのリストを「その日の最初の訪問時刻」順に並び替え
         const sortedStaffNames = Object.keys(grouped).sort((a, b) => {
-            return grouped[a].earliestTime.localeCompare(grouped[b].earliestTime);
+            const timeA = grouped[a].earliestTime;
+            const timeB = grouped[b].earliestTime;
+            if (timeA !== timeB) return timeA.localeCompare(timeB);
+            return a.localeCompare(b); // 時刻が同じなら名前順
         });
 
-        // 並び替えた順にWebhookへ送信
+        console.log(`📊 Exporting data for ${date}:`, sortedStaffNames.map(name => `${name}(${grouped[name].earliestTime})`));
+
+        // 並び替えた順に一つずつ送信 (await で確実に順番を守る)
         for (const staffName of sortedStaffNames) {
             const staffData = grouped[staffName];
             
             // スタッフ内の訪問データも時刻順にソート
-            staffData.visits.sort((a, b) => normalizeTime(a.time_range).localeCompare(normalizeTime(b.time_range)));
+            staffData.visits.sort((a, b) => {
+                const tA = normalizeTime(a.time_range);
+                const tB = normalizeTime(b.time_range);
+                return tA.localeCompare(tB);
+            });
 
+            console.log(`   📤 Sending report for ${staffName}...`);
             await fetch(webhookUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },

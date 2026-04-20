@@ -11,14 +11,16 @@
     
     <style>
         :root {
-            --primary: #0ea5e9;
-            --primary-dark: #0284c7;
+            --primary: #38bdf8;
+            --primary-dark: #0ea5e9;
             --secondary: #10b981;
-            --bg-body: #f1f5f9;
-            --bg-card: #ffffff;
-            --text-main: #1e293b;
-            --text-muted: #64748b;
-            --border: #e2e8f0;
+            --bg-body: #0f172a;
+            --bg-card: #1e293b;
+            --bg-input: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --hover-bg: #2d3e5a;
         }
 
         * {
@@ -71,7 +73,7 @@
             margin-bottom: 12px;
             cursor: pointer;
             transition: all 0.2s ease;
-            background: #fff;
+            background: var(--bg-card);
         }
 
         .staff-card:hover {
@@ -80,7 +82,7 @@
         }
 
         .staff-card.active {
-            background-color: #f0f9ff;
+            background-color: var(--hover-bg);
             border-color: var(--primary);
         }
 
@@ -200,7 +202,7 @@
             width: 12px;
             height: 12px;
             border-radius: 50%;
-            background-color: white;
+            background-color: var(--bg-card);
             border: 3px solid var(--primary);
             z-index: 1;
         }
@@ -226,7 +228,7 @@
         .stay-duration {
             font-size: 0.9rem;
             color: var(--text-muted);
-            background: #f8fafc;
+            background: #0f172a;
             display: inline-block;
             padding: 4px 10px;
             border-radius: 20px;
@@ -246,15 +248,16 @@
             left: 50%;
             transform: translateX(-50%);
             z-index: 1000;
-            background: rgba(255, 255, 255, 0.95);
+            background: rgba(30, 41, 59, 0.95);
             padding: 12px 24px;
             border-radius: 40px;
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
             display: none;
             align-items: center;
             gap: 12px;
             border: 2px solid var(--primary);
             font-weight: 600;
+            color: var(--text-main);
             animation: slideDown 0.3s ease;
         }
 
@@ -279,15 +282,16 @@
         }
 
         .modal-content {
-            background: white;
+            background: var(--bg-card);
             padding: 24px;
             border-radius: 12px;
             width: 90%;
             max-width: 600px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5);
             pointer-events: auto; /* モーダル内はクリック可能に */
             max-height: 90vh;
             overflow-y: auto;
+            color: var(--text-main);
         }
         
         /* 施設管理用のサイドパネルスタイル */
@@ -357,7 +361,7 @@
         .accordion-header .arrow { transition: transform 0.3s; }
         .accordion-item.expanded .arrow { transform: rotate(180deg); }
         .accordion-content {
-            display: none; padding: 0 0 8px 0; background: white;
+            display: none; padding: 0 0 8px 0; background: var(--bg-card);
         }
         .accordion-item.expanded .accordion-content { display: block; }
         
@@ -427,7 +431,7 @@
         .timeline-photo-thumb:hover { transform: scale(1.05); }
 
         .timeline-notes {
-            font-size: 0.9rem; color: var(--text-main); background: #fffbeb;
+            font-size: 0.9rem; color: var(--text-main); background: #334155;
             padding: 8px 12px; border-radius: 8px; border-left: 3px solid #f59e0b;
             margin-top: 8px; line-height: 1.4; white-space: pre-wrap;
         }
@@ -821,26 +825,27 @@
                     <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">所在地（住所）から座標を再計算</label>
                     <div style="display: flex; gap: 8px; margin-bottom: 8px;">
                         <input type="text" id="edit-facility-address" placeholder="住所を入力" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 8px;">
+                        <input type="text" id="edit-facility-address" placeholder="住所を入力" style="flex: 1; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                         <button type="button" class="btn-primary" id="btn-edit-geocode" style="background-color: var(--secondary); white-space: nowrap; font-size: 0.85rem; padding: 0 12px;">🔍 検索</button>
                     </div>
                     
                     <div style="display: flex; gap: 8px;">
                         <div style="flex: 1;">
                             <label style="display: block; font-size: 0.75rem; margin-bottom: 2px;">緯度</label>
-                            <input type="number" step="0.000001" id="edit-facility-lat" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px;">
+                            <input type="number" step="0.000001" id="edit-facility-lat" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                         </div>
                         <div style="flex: 1;">
                             <label style="display: block; font-size: 0.75rem; margin-bottom: 2px;">経度</label>
-                            <input type="number" step="0.000001" id="edit-facility-lng" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px;">
+                            <input type="number" step="0.000001" id="edit-facility-lng" style="width: 100%; padding: 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                         </div>
                     </div>
                 </div>
 
                 <div id="edit-patient-fields" style="display: none;">
                     <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">患者名</label>
-                    <input type="text" id="edit-patient-name" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px;">
+                    <input type="text" id="edit-patient-name" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; background: var(--bg-input); color: var(--text-main);">
                     <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">住所・部屋番号・備考</label>
-                    <input type="text" id="edit-patient-room" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px;">
+                    <input type="text" id="edit-patient-room" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                 </div>
 
                 <button class="btn-primary" id="btn-save-edit" style="padding: 12px; font-weight: 600; margin-top: 10px;">💾 変更を保存する</button>
@@ -1970,7 +1975,7 @@
             
             filteredFacs.forEach(fac => {
                 const item = document.createElement('div');
-                item.style = "background: white; border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);";
+                item.style = "background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 4px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); color: var(--text-main);";
                 item.innerHTML = `
                     <div style="display: flex; justify-content: space-between; align-items: flex-start;">
                         <span style="font-weight: 700; font-size: 0.9rem;">🏠 ${fac.name}</span>
@@ -1993,7 +1998,7 @@
 
             filteredPats.forEach(pat => {
                 const item = document.createElement('div');
-                item.style = "background: white; border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.05);";
+                item.style = "background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: 0 1px 4px rgba(0,0,0,0.2); color: var(--text-main);";
                 
                 const currentFac = cachedManagementData.find(f => f.id === pat.facility_id);
 
@@ -2006,17 +2011,17 @@
                             <button onclick="deletePatient('${pat.id}')" style="background:none; border:none; color:var(--text-muted); cursor:pointer; font-size:1rem;">&times;</button>
                         </div>
                     </div>
-                    <div style="background: #f8fafc; padding: 10px; border-radius: 8px; border: 1px solid #edf2f7; display: flex; flex-direction: column; gap: 10px;">
+                    <div style="background: var(--bg-input); padding: 10px; border-radius: 8px; border: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px;">
                         <div style="display: flex; align-items: center; gap: 8px;">
                             <label style="font-size: 0.75rem; color: var(--text-muted); white-space: nowrap;">📍 移動先:</label>
-                            <select id="move-select-${pat.id}" style="flex: 1; font-size: 0.85rem; padding: 6px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; min-width: 0; background: white;">
+                            <select id="move-select-${pat.id}" style="flex: 1; font-size: 0.85rem; padding: 6px; border-radius: 6px; border: 1px solid var(--border); cursor: pointer; min-width: 0; background: var(--bg-body); color: var(--text-main);">
                                 ${cachedManagementData.map(f => `<option value="${f.id}" ${f.id === pat.facility_id ? 'selected' : ''}>${f.id === 'home' ? '🏠 ' : ''}${f.name}</option>`).join('')}
                             </select>
                         </div>
                         <button onclick="window.updatePatientFacility('${pat.id}', document.getElementById('move-select-${pat.id}').value)" 
                                 style="width: 100%; background: var(--primary); color: white; border: none; border-radius: 6px; padding: 10px; cursor: pointer; font-size: 0.85rem; font-weight: bold;">この施設に移動を確定する</button>
                         <button onclick="loadManagementLists()" 
-                                style="width: 100%; background: #e2e8f0; color: var(--text-main); border: none; border-radius: 6px; padding: 8px; cursor: pointer; font-size: 0.75rem;">取り消す</button>
+                                style="width: 100%; background: var(--hover-bg); color: var(--text-main); border: 1px solid var(--border); border-radius: 6px; padding: 8px; cursor: pointer; font-size: 0.75rem;">取り消す</button>
                     </div>
                 `;
                 patContainer.appendChild(item);
