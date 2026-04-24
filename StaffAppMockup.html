@@ -1152,6 +1152,12 @@
             if (navigator.vibrate) {
                 navigator.vibrate([200, 100, 200]);
             }
+
+            // 【新機能】手動チェックインでも滞在時間の計測を開始する
+            if (!activeVisitTimers[facility.id]) {
+                activeVisitTimers[facility.id] = { arrivalTime: new Date(), name: facility.name };
+                addLog(`⏱️ [手動] ${facility.name} の滞在計測を開始しました。`);
+            }
         };
 
         btnSavePatients.addEventListener('click', async () => {
@@ -1292,8 +1298,8 @@
 
         const GEO_SETTINGS = {
             maxAccuracy: 100,      // これ以上精度が悪い(m)ときは無視する
-            arrivalDistance: 50,    // 到着と判定する距離(m)
-            departureDistance: 100  // 退出と判定する距離(m)
+            arrivalDistance: 70,    // 到着と判定する距離(m) (50mから拡大して感度調整)
+            departureDistance: 120  // 退出と判定する距離(m) (100mから拡大)
         };
 
         // GPS警告の排他制御用フラグ
