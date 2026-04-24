@@ -580,7 +580,10 @@
                     <label>送信先: </label>
                     <input type="email" id="target-email" value="example@gmail.com" style="padding: 6px 8px; border: 1px solid var(--border); border-radius: 4px; width: 220px;" placeholder="指定のGmailアドレス">
                 </div>
-                <button class="btn-primary" id="btn-submit-report">🚀 バックグラウンドで自動送信</button>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn" id="btn-print-report" style="background:#f1f5f9; color:var(--bg-body); font-weight:600; border:1px solid var(--border);">🖨️ 印刷する</button>
+                    <button class="btn-primary" id="btn-submit-report">🚀 バックグラウンドで自動送信</button>
+                </div>
             </div>
         </div>
     </div>
@@ -646,6 +649,7 @@
             <div class="manage-tabs">
                 <div class="manage-tab active" data-tab="new">新規登録</div>
                 <div class="manage-tab" data-tab="list">一覧・管理</div>
+                <div class="manage-tab" data-tab="stats">月別集計</div>
                 <div class="manage-tab" data-tab="batch">一括登録（エクセルなど）</div>
                 <div class="manage-tab" data-tab="staff">スタッフ管理</div>
                 <div class="manage-tab" data-tab="settings">連携設定</div>
@@ -689,7 +693,8 @@
                         </div>
                         <div style="display: flex; gap: 8px;">
                             <input type="text" id="new-patient-id" placeholder="患者ID" style="width: 80px; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
-                            <input type="text" id="new-patient-name" placeholder="患者名" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                            <input type="text" id="new-patient-name" placeholder="患者氏名" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
+                            <input type="text" id="new-patient-kana" placeholder="フリガナ" style="flex: 1; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
                         </div>
                         <input type="text" id="new-patient-room" placeholder="部屋番号・特記事項" style="width: 100%; padding: 8px; border-radius: 4px; border: 1px solid var(--border);">
                         <button class="btn-primary" id="btn-submit-patient" style="background-color: var(--secondary); padding: 10px;">患者を追加</button>
@@ -729,7 +734,35 @@
                 </div>
             </div>
 
-            <!-- タブ3: 一括登録 -->
+            <!-- タブ3: 月別集計 -->
+            <div id="tab-stats" class="manage-tab-content">
+                <div style="display: flex; gap: 10px; margin-bottom: 20px; align-items: center; background: var(--bg-body); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                    <div>
+                        <label style="display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">表示月</label>
+                        <input type="month" id="stats-month-input" style="padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg-card); color: var(--text-main);">
+                    </div>
+                    <button class="btn-primary" id="btn-fetch-stats" style="align-self: flex-end; padding: 10px 20px;">表示</button>
+                    <button class="btn" id="btn-export-stats-csv" style="align-self: flex-end; padding: 10px 20px; background: transparent; border: 1px solid var(--primary); color: var(--primary);">📥 CSV保存</button>
+                </div>
+                
+                <div style="max-height: 500px; overflow-y: auto; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-card);">
+                    <table style="width: 100%; border-collapse: collapse; font-size: 0.9rem;">
+                        <thead style="background: var(--bg-body); position: sticky; top: 0; z-index: 5;">
+                            <tr>
+                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid var(--border);">フリガナ</th>
+                                <th style="padding: 12px; text-align: left; border-bottom: 2px solid var(--border);">患者氏名</th>
+                                <th style="padding: 12px; text-align: center; border-bottom: 2px solid var(--border);">訪問回数</th>
+                            </tr>
+                        </thead>
+                        <tbody id="stats-table-body">
+                            <tr><td colspan="3" style="padding: 30px; text-align: center; color: var(--text-muted);">月を選択して「表示」を押してください</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top: 15px; text-align: right; color: var(--text-muted); font-size: 0.8rem;">
+                    ※あいうえお順で表示されます
+                </div>
+            </div>
             <div id="tab-batch" class="manage-tab-content">
                 <p style="font-size: 0.9rem; color: #64748b; margin-bottom: 12px;">
                     エクセル等の表をコピーして、下の枠に貼り付けてください。<br>
@@ -844,6 +877,8 @@
                 <div id="edit-patient-fields" style="display: none;">
                     <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">患者名</label>
                     <input type="text" id="edit-patient-name" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; background: var(--bg-input); color: var(--text-main);">
+                    <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">フリガナ</label>
+                    <input type="text" id="edit-patient-kana" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; margin-bottom: 12px; background: var(--bg-input); color: var(--text-main);">
                     <label style="display: block; font-size: 0.85rem; margin-bottom: 4px;">住所・部屋番号・備考</label>
                     <input type="text" id="edit-patient-room" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-main);">
                 </div>
@@ -1169,6 +1204,37 @@
             document.getElementById('report-modal').style.display = 'flex';
         });
 
+        // 印刷機能
+        document.getElementById('btn-print-report').addEventListener('click', () => {
+            const reportText = document.getElementById('report-text').value;
+            const printWindow = window.open('', '_blank', 'width=800,height=600');
+            printWindow.document.write(`
+                <html>
+                <head>
+                    <title>業務日報印刷</title>
+                    <style>
+                        body { font-family: 'Noto Sans JP', sans-serif; padding: 40px; line-height: 1.6; white-space: pre-wrap; }
+                        @media print {
+                            .no-print { display: none; }
+                        }
+                    </style>
+                </head>
+                <body>
+                    <div class="no-print" style="margin-bottom: 20px; padding: 10px; background: #f1f5f9; border-radius: 8px; text-align: center;">
+                        <button onclick="window.print()" style="padding: 10px 20px; font-weight: bold; cursor: pointer;">🖨️ 印刷ダイアログを開く</button>
+                        <p style="font-size: 0.8rem; color: #666; margin-top: 5px;">※印刷が終わったらこのタブを閉じてください</p>
+                    </div>
+                    <div style="font-size: 1.1rem; border: 1px solid #ccc; padding: 20px; min-height: 80vh;">${reportText}</div>
+                    <script>
+                        // ページ読み込み時に自動で印刷ダイアログを表示（オプション）
+                        // window.print();
+                    </script>
+                </body>
+                </html>
+            `);
+            printWindow.document.close();
+        });
+
         document.getElementById('btn-close-modal').addEventListener('click', () => {
             document.getElementById('report-modal').style.display = 'none';
         });
@@ -1267,7 +1333,7 @@
                             <td style="padding: 12px; border-bottom: 1px solid var(--border);">${row.location}</td>
                             <td style="padding: 12px; border-bottom: 1px solid var(--border); font-size: 0.85rem; color: var(--text-muted); max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${row.notes || '-'}</td>
                             <td style="padding: 12px; border-bottom: 1px solid var(--border); display: flex; gap: 8px;">
-                                <button class="btn-primary" style="padding: 4px 8px; font-size: 0.8rem;" onclick='viewVisitDetail(${JSON.stringify(row).replace(/'/g, "&#39;")})'>詳細</button>
+                                <button class="btn-primary" style="padding: 4px 8px; font-size: 0.8rem;" onclick="viewVisitDetail(this.dataset.visit)" data-visit='${JSON.stringify(row).replace(/'/g, "&apos;")}'>詳細</button>
                                 <button class="btn" style="padding: 4px 8px; font-size: 0.8rem; color:#ef4444; border:1px solid #ef4444; background:white;" onclick="deleteVisit('${row.id}')">削除</button>
                             </td>
                         `;
@@ -2086,6 +2152,7 @@
             const facility_id = document.getElementById('select-facility').value;
             const id = document.getElementById('new-patient-id').value;
             const name = document.getElementById('new-patient-name').value;
+            const name_kana = document.getElementById('new-patient-kana').value;
             const room = document.getElementById('new-patient-room').value;
             
             if(!facility_id || !id || !name || !room) return alert('入力項目が不足しています。');
@@ -2094,13 +2161,14 @@
                 const response = await fetchWithAuth(`${API_BASE}/api/patients`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ id, facility_id, name, room })
+                    body: JSON.stringify({ id, facility_id, name, name_kana, room })
                 });
                 const data = await response.json();
                 if(data.success) {
                     alert('患者を追加しました');
                     document.getElementById('new-patient-id').value = '';
                     document.getElementById('new-patient-name').value = '';
+                    document.getElementById('new-patient-kana').value = '';
                     document.getElementById('new-patient-room').value = '';
                 } else {
                     alert('エラー: ' + data.message);
@@ -2153,6 +2221,7 @@
             document.getElementById('edit-patient-fields').style.display = 'block';
             
             document.getElementById('edit-patient-name').value = patient.name;
+            document.getElementById('edit-patient-kana').value = patient.name_kana || '';
             document.getElementById('edit-patient-room').value = patient.room;
             
             editModal.style.display = 'flex';
@@ -2197,6 +2266,7 @@
                 url = `${API_BASE}/api/patients/${id}`;
                 body = {
                     name: document.getElementById('edit-patient-name').value,
+                    name_kana: document.getElementById('edit-patient-kana').value,
                     room: document.getElementById('edit-patient-room').value
                 };
             }
@@ -2344,6 +2414,69 @@
                 btn.innerText = "設定を保存する";
             }
         };
+
+        // --- 月別集計ロジック ---
+        const renderMonthlyStats = async () => {
+            const monthVal = document.getElementById('stats-month-input').value;
+            if (!monthVal) return;
+            const [year, month] = monthVal.split('-');
+            const tbody = document.getElementById('stats-table-body');
+            tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center;">読み込み中...</td></tr>';
+
+            try {
+                const res = await fetchWithAuth(`${API_BASE}/api/stats/monthly?year=${year}&month=${parseInt(month)}`);
+                const result = await res.json();
+                if (result.success) {
+                    tbody.innerHTML = '';
+                    if (result.data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center;">記録がありません</td></tr>';
+                        return;
+                    }
+                    result.data.forEach(item => {
+                        const tr = document.createElement('tr');
+                        tr.innerHTML = `
+                            <td style="padding: 12px; border-bottom: 1px solid var(--border);">${item.name_kana || '-'}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid var(--border); font-weight: 600;">${item.name}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center;"><span style="background: var(--primary); padding: 4px 10px; border-radius: 20px; font-weight: bold;">${item.count}回</span></td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                }
+            } catch (e) { tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: red;">読み込み失敗</td></tr>'; }
+        };
+
+        document.getElementById('btn-fetch-stats').addEventListener('click', renderMonthlyStats);
+
+        document.getElementById('btn-export-stats-csv').addEventListener('click', () => {
+            const monthVal = document.getElementById('stats-month-input').value;
+            if (!monthVal) return alert('先に月を選択して表示してください。');
+            
+            const rows = [['フリガナ', '患者名', '訪問回数']];
+            const tableRows = document.querySelectorAll('#stats-table-body tr');
+            tableRows.forEach(tr => {
+                const tds = tr.querySelectorAll('td');
+                if (tds.length >= 3) {
+                    rows.push([tds[0].innerText, tds[1].innerText, tds[2].innerText.replace('回', '')]);
+                }
+            });
+
+            if (rows.length <= 1) return alert('エクスポートするデータがありません。');
+
+            const csvContent = "\uFEFF" + rows.map(r => r.join(',')).join('\n');
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+            const link = document.createElement("a");
+            link.href = URL.createObjectURL(blob);
+            link.download = `訪問集計_${monthVal}.csv`;
+            link.click();
+        });
+
+        // ページロード時に現在の月をデフォルト設定
+        const setDefaultMonth = () => {
+            const n = new Date();
+            const val = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}`;
+            document.getElementById('stats-month-input').value = val;
+        };
+        setDefaultMonth();
 
         // 初期表示
         renderStaffList();

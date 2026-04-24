@@ -128,6 +128,7 @@ async function initDB() {
         try {
             await client.query("ALTER TABLE patients ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION");
             await client.query("ALTER TABLE patients ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION");
+            await client.query("ALTER TABLE patients ADD COLUMN IF NOT EXISTS name_kana TEXT");
         } catch (e) { /* すでにある場合は無視 */ }
         
         await client.query(`CREATE TABLE IF NOT EXISTS staff (
@@ -251,6 +252,33 @@ app.post('/api/send-report', async (req, res) => {
     } catch (error) {
         console.error('❌ メールの送信に失敗しました:', error);
         res.status(500).json({ success: false, message: 'メール送信エラー', error: error.message });
+    }
+});
+
+// 月別集計API
+app.get('/api/stats/monthly', async (req, res) => {
+    const { year, month } = req.query;
+    if (!year || !month) return res.status(400).json({ success: false, message: '年と月を指定してください。' });
+
+    try {
+        // 指定された月の訪問回数を集計し、患者テーブルと結合してフリガナを取得
+        const query = `
+            SELECT 
+                v.location as name, 
+                p.name_kana,
+                COUNT(*) as count
+            FROM visits v
+            LEFT JOIN patients p ON v.location = p.name
+            WHERE EXTRACT(YEAR FROM v.visit_date) = $1 
+              AND EXTRACT(MONTH FROM v.visit_date) = $2
+            GROUP BY v.location, p.name_kana
+            ORDER BY p.name_kana ASC NULLS LAST, v.location ASC
+        `;
+        const result = await pool.query(query, [year, month]);
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ 集計エラー:', error);
+        res.status(500).json({ success: false, message: '集計中にエラーが発生しました。' });
     }
 });
 
