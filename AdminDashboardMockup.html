@@ -2437,8 +2437,13 @@
                         `;
                         tbody.appendChild(tr);
                     });
+                } else {
+                    tbody.innerHTML = `<tr><td colspan="3" style="padding: 20px; text-align: center; color: #ef4444;">エラー: ${result.message}</td></tr>`;
                 }
-            } catch (e) { tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: red;">読み込み失敗</td></tr>'; }
+            } catch (e) { 
+                console.error('Stats load error:', e);
+                tbody.innerHTML = '<tr><td colspan="3" style="padding: 20px; text-align: center; color: #ef4444;">データの読み込みに失敗しました</td></tr>'; 
+            }
         };
 
         document.getElementById('btn-fetch-stats').addEventListener('click', renderMonthlyStats);

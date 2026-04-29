@@ -265,14 +265,19 @@ app.get('/api/stats/monthly', async (req, res) => {
         const query = `
             SELECT 
                 v.location as name, 
-                p.name_kana,
+                MAX(p.name_kana) as name_kana,
                 COUNT(*) as count
             FROM visits v
-            LEFT JOIN patients p ON v.location = p.name
-            WHERE EXTRACT(YEAR FROM v.visit_date) = $1 
-              AND EXTRACT(MONTH FROM v.visit_date) = $2
-            GROUP BY v.location, p.name_kana
-            ORDER BY p.name_kana ASC NULLS LAST, v.location ASC
+            LEFT JOIN patients p ON (
+                v.location = p.name OR
+                v.location LIKE '%(' || p.name || ' 様)%' OR
+                v.location LIKE '%（' || p.name || ' 様）%' OR
+                v.location LIKE '%' || p.name || '%'
+            )
+            WHERE EXTRACT(YEAR FROM v.visit_date::date) = $1 
+              AND EXTRACT(MONTH FROM v.visit_date::date) = $2
+            GROUP BY v.location
+            ORDER BY name_kana ASC NULLS LAST, v.location ASC
         `;
         const result = await pool.query(query, [year, month]);
         res.json({ success: true, data: result.rows });
@@ -649,14 +654,14 @@ app.post('/api/facilities', adminAuth, async (req, res) => {
 
 // 新規患者の追加API (管理者認証)
 app.post('/api/patients', adminAuth, async (req, res) => {
-    const { id, facility_id, name, room } = req.body;
+    const { id, facility_id, name, name_kana, room } = req.body;
     if (!id || !facility_id || !name || !room) {
          return res.status(400).json({ success: false, message: '必要なデータが不足しています。' });
     }
     try {
         await pool.query(
-            "INSERT INTO patients (id, facility_id, name, room) VALUES ($1, $2, $3, $4)",
-            [id, facility_id, name, room]
+            "INSERT INTO patients (id, facility_id, name, name_kana, room) VALUES ($1, $2, $3, $4, $5)",
+            [id, facility_id, name, name_kana || null, room]
         );
         res.status(200).json({ success: true, message: '患者を追加しました。' });
     } catch (err) {
