@@ -502,7 +502,22 @@
                     <span class="data-label">最終取得:</span>
                     <span class="data-value" id="val-time">--:--:--</span>
                 </div>
+                <!-- 稼働タイマー追加 -->
+                <div id="tracking-timer-container" style="display: none; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--border); text-align: center;">
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 4px;">現在の稼働時間</div>
+                    <div id="val-duration" style="font-size: 1.5rem; font-weight: 700; color: var(--primary); font-family: monospace;">00:00:00</div>
+                </div>
             </div>
+        </div>
+
+        <!-- 稼働履歴セクション追加 -->
+        <div class="log-container" id="session-history-container" style="display: none; max-height: 200px;">
+            <div class="log-title">
+                今日の稼働履歴
+            </div>
+            <ul class="log-list" id="session-history-list">
+                <!-- 履歴がここに追加されます -->
+            </ul>
         </div>
 
         <div class="log-container">
@@ -573,6 +588,11 @@
         let isEcoMode = false;
         // 無音のWAVデータ (1秒間)
         const silentWav = "data:audio/wav;base64,UklGRigAAABXQVZFRm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQQAAAAAAA==";
+
+        // --- 稼働時間管理用 ---
+        let sessionStartTime = null;
+        let timerInterval = null;
+        let sessionHistory = [];
 
         // 節電モードの切り替え関数
         const toggleEcoMode = async (enable) => {
@@ -835,7 +855,28 @@
             triggerContainer.style.display = 'block';
             // 節電モードボタンを表示
             document.getElementById('btn-eco-toggle').style.display = 'block';
+
+            // --- 稼働タイマーの開始 ---
+            sessionStartTime = new Date();
+            document.getElementById('tracking-timer-container').style.display = 'block';
+            document.getElementById('session-history-container').style.display = 'block';
+            
+            if (timerInterval) clearInterval(timerInterval);
+            timerInterval = setInterval(updateTrackingTimer, 1000);
+            addLog("🏁 稼働セッションを開始しました。", "success");
         });
+
+        // タイマー更新関数
+        const updateTrackingTimer = () => {
+            if (!sessionStartTime) return;
+            const diff = new Date() - sessionStartTime;
+            const hours = Math.floor(diff / 3600000);
+            const minutes = Math.floor((diff % 3600000) / 60000);
+            const seconds = Math.floor((diff % 60000) / 1000);
+            
+            document.getElementById('val-duration').innerText = 
+                `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        };
 
         // 節電モードボタンのクリック
         document.getElementById('btn-eco-toggle').addEventListener('click', () => {
@@ -870,6 +911,36 @@
             if (window.simInterval) {
                 clearInterval(window.simInterval);
                 window.simInterval = null;
+            }
+
+            // --- 稼働タイマーの停止と記録 ---
+            if (timerInterval) {
+                clearInterval(timerInterval);
+                timerInterval = null;
+            }
+            
+            if (sessionStartTime) {
+                const endTime = new Date();
+                const diffMs = endTime - sessionStartTime;
+                const diffMin = Math.round(diffMs / 60000);
+                
+                const startStr = sessionStartTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                const endStr = endTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+                const durationStr = diffMin > 0 ? `${diffMin}分` : '1分未満';
+                
+                const sessionText = `${startStr} 〜 ${endStr} (${durationStr})`;
+                sessionHistory.push(sessionText);
+                
+                // 履歴リストに追加
+                const li = document.createElement('li');
+                li.className = 'log-item';
+                li.innerHTML = `<div style="color: var(--primary); font-weight: 600;">稼働記録</div><div>${sessionText}</div>`;
+                document.getElementById('session-history-list').prepend(li);
+                
+                // サーバーへ「稼働ログ」として保存
+                await saveWorkLog(sessionStartTime, endTime, diffMin);
+                
+                sessionStartTime = null;
             }
 
             addLog("トラッキングを停止しました。", "success");
@@ -1520,6 +1591,40 @@
                 addLog(`✅ [自動完了] ${timerInfo.name} の滞在を記録しました。`, "success");
             } catch (e) {
                 console.error('AutoSave Error:', e);
+            }
+        }
+
+        // 【新機能】稼働ログをサーバーへ送信
+        async function saveWorkLog(startTime, endTime, durationMin) {
+            if (!currentStaff) return;
+            
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const startStr = startTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+            const endStr = endTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+            
+            const workLogData = {
+                staffName: currentStaff.name.trim(),
+                date: dateStr,
+                visits: [{
+                    time: startStr,
+                    location: '--- アプリ稼働記録 ---',
+                    duration: durationMin > 0 ? `${durationMin}分` : '1分未満',
+                    category: '稼働ログ',
+                    notes: `稼働時間: ${startStr} 〜 ${endStr}`,
+                    images: []
+                }]
+            };
+
+            try {
+                await fetch(`${API_BASE}/api/save-visit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(workLogData)
+                });
+                addLog(`📊 稼働ログを保存しました (${startStr}〜${endStr})`, "info");
+            } catch (e) {
+                console.error('WorkLog Save Error:', e);
             }
         }
 
