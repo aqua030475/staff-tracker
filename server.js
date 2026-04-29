@@ -272,9 +272,10 @@ app.get('/api/stats/monthly', async (req, res) => {
                         SELECT p.name 
                         FROM patients p 
                         WHERE 
-                            v.location = p.name OR
-                            v.location LIKE '%(' || p.name || ' 様)%' OR
-                            v.location LIKE '%（' || p.name || ' 様）%'
+                            REPLACE(REPLACE(v.location, ' ', ''), '　', '') = REPLACE(REPLACE(p.name, ' ', ''), '　', '') OR
+                            REPLACE(REPLACE(v.location, ' ', ''), '　', '') LIKE '%(' || REPLACE(REPLACE(p.name, ' ', ''), '　', '') || '様)%' OR
+                            REPLACE(REPLACE(v.location, ' ', ''), '　', '') LIKE '%（' || REPLACE(REPLACE(p.name, ' ', ''), '　', '') || '様）%' OR
+                            REPLACE(REPLACE(v.location, ' ', ''), '　', '') LIKE REPLACE(REPLACE(p.name, ' ', ''), '　', '') || '様%'
                         LIMIT 1
                     ) as matched_name
                 FROM visits v
@@ -282,13 +283,14 @@ app.get('/api/stats/monthly', async (req, res) => {
                   AND EXTRACT(MONTH FROM v.visit_date::date) = $2
             )
             SELECT 
-                COALESCE(m.matched_name, m.location) as name, 
+                m.matched_name as name, 
                 MAX(p.name_kana) as name_kana,
                 COUNT(DISTINCT m.visit_date) as count,
                 COUNT(*) as total_records
             FROM visit_patient_mapping m
-            LEFT JOIN patients p ON m.matched_name = p.name
-            GROUP BY COALESCE(m.matched_name, m.location)
+            JOIN patients p ON m.matched_name = p.name
+            WHERE m.matched_name IS NOT NULL
+            GROUP BY m.matched_name
             ORDER BY name_kana ASC NULLS LAST, name ASC
         `;
         const result = await pool.query(query, [year, month]);
@@ -367,6 +369,7 @@ app.post('/api/save-visit', async (req, res) => {
     }
 
     const client = await pool.connect();
+    const createdIds = [];
     try {
         await client.query('BEGIN');
         
@@ -377,6 +380,7 @@ app.post('/api/save-visit', async (req, res) => {
                 [trimmedStaffName, date, v.time, v.location, v.duration, v.category || '未設定', v.notes || '']
             );
             const visitId = visitResult.rows[0].id;
+            createdIds.push(visitId);
             
             // 画像の保存処理があれば実行 (Base64を直接DBに保存する)
             if (v.images && Array.isArray(v.images)) {
@@ -391,7 +395,7 @@ app.post('/api/save-visit', async (req, res) => {
         }
         
         await client.query('COMMIT');
-        console.log(`✅ [${staffName}] スタッフアプリから直接履歴(画像/メモ含む)を保存しました。`);
+        console.log(`✅ [${staffName}] スタッフアプリから直接履歴(画像/メモ含む)を保存しました。 (IDs: ${createdIds.join(',')})`);
         
         // Webhook連携 (Google Spreadsheet等への送信)
         try {
@@ -421,13 +425,34 @@ app.post('/api/save-visit', async (req, res) => {
             console.error('❌ Webhookの送信に失敗しました:', webhookErr.message);
         }
 
-        res.status(200).json({ success: true, message: 'データベースへの保存が完了しました。' });
+        res.status(200).json({ success: true, message: 'データベースへの保存が完了しました。', ids: createdIds });
     } catch (error) {
         await client.query('ROLLBACK');
         console.error('❌ 保存エラー:', error.message);
         res.status(500).json({ success: false, message: '保存エラー', error: error.message });
     } finally {
         client.release();
+    }
+});
+
+// 訪問記録の滞在時間を一括更新するAPI (GPS退出検知時の後追い更新用)
+app.post('/api/visits/batch-update-duration', async (req, res) => {
+    const { visitIds, duration } = req.body;
+    if (!visitIds || !Array.isArray(visitIds) || visitIds.length === 0 || !duration) {
+        return res.status(400).json({ success: false, message: '必要なデータが不足しています。' });
+    }
+
+    try {
+        // durationを更新し、カテゴリが「自動滞在ログ」等でなければ「訪問実績(GPS確定)」的なニュアンスに変更
+        await pool.query(
+            "UPDATE visits SET duration = $1, category = CASE WHEN category = '自動滞在ログ' THEN category ELSE '訪問実績(GPS確定)' END WHERE id = ANY($2)",
+            [duration, visitIds]
+        );
+        console.log(`✅ 訪問記録の滞在時間を更新しました: IDs=${visitIds.join(',')}, Duration=${duration}`);
+        res.json({ success: true, message: '滞在時間を更新しました。' });
+    } catch (error) {
+        console.error('❌ 一括更新エラー:', error.message);
+        res.status(500).json({ success: false, message: '更新エラー', error: error.message });
     }
 });
 

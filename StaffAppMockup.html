@@ -1167,12 +1167,20 @@
             
             const now = new Date();
             const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-            const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-            // 選択されたスタッフ名を使用 (空白をトリミングして一致精度を向上)
-            const staffName = currentStaff ? currentStaff.name.trim() : "不明なスタッフ";
             
             // 滞在時間の計算 (到着検知タイマーがある場合)
             const timerInfo = activeVisitTimers[currentFacilityId];
+            
+            // 【改善】保存時刻ではなく「到着時刻」を開始時刻として使用する
+            let visitStartTime = now;
+            if (timerInfo && timerInfo.arrivalTime) {
+                visitStartTime = timerInfo.arrivalTime;
+            }
+            const timeStr = visitStartTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+
+            // 選択されたスタッフ名を使用 (空白をトリミングして一致精度を向上)
+            const staffName = currentStaff ? currentStaff.name.trim() : "不明なスタッフ";
+            
             let stayDuration = 'チェックイン済み';
             if (timerInfo && timerInfo.arrivalTime) {
                 const stayMs = new Date() - timerInfo.arrivalTime;
@@ -1228,9 +1236,11 @@
                     if(result.success) {
                         addLog(`🏥 ${currentFacilityName}の記録をサーバーへ保存しました！<br>・${logMessages.join('<br>・')}`, "success");
                         
-                        // 【新機能】手動で保存したので、自動ログタイマーを解除
-                        if (currentFacilityId) {
-                            delete activeVisitTimers[currentFacilityId];
+                        // 【新機能】手動で保存した記録のIDを保持しておき、退出時に時間を更新できるようにする
+                        if (timerInfo && result.ids) {
+                            if (!timerInfo.manualVisitIds) timerInfo.manualVisitIds = [];
+                            timerInfo.manualVisitIds = timerInfo.manualVisitIds.concat(result.ids);
+                            addLog(`⏱️ 滞在時間は退出時にGPSで自動確定されます。`, "info");
                         }
                     } else {
                         addLog(`⚠️ サーバーへの保存に失敗しました: ${result.message}`, "error");
@@ -1271,7 +1281,8 @@
                             body: JSON.stringify(emptyVisitData)
                         });
                         addLog(`📍 ${currentFacilityName} の滞在記録のみを保存しました。`, "success");
-                        if (currentFacilityId) delete activeVisitTimers[currentFacilityId];
+                        // 滞在記録のみの場合も、退出時に時間を更新したい場合はここでIDを保持してもよいが、
+                        // ここでは簡略化のため即時保存とする
                         facilityModal.style.display = 'none';
                     } catch (e) {
                         addLog('⚠️ 保存に失敗しました。', 'error');
@@ -1453,6 +1464,28 @@
             if (stayMin < 3) return;
 
             const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            const stayDuration = `${stayMin}分`;
+
+            // 【新機能】もし既に手動で保存された記録があるなら、その時間を更新する
+            if (timerInfo.manualVisitIds && timerInfo.manualVisitIds.length > 0) {
+                addLog(`⏱️ [後追い更新] ${timerInfo.name} の滞在時間(${stayDuration})を確定させています...`, "info");
+                try {
+                    await fetch(`${API_BASE}/api/visits/batch-update-duration`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            visitIds: timerInfo.manualVisitIds,
+                            duration: stayDuration
+                        })
+                    });
+                    addLog(`✅ [確定完了] ${timerInfo.name} の滞在記録を${stayDuration}に更新しました。`, "success");
+                    return; // 既存記録を更新した場合は、新規の自動ログは作らない
+                } catch (e) {
+                    console.error('UpdateDuration Error:', e);
+                }
+            }
+
+            // 以下、手動記録がない場合の通常の自動ログ作成
             const timeStr = timerInfo.arrivalTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
             
             // 【新機能】その施設に登録されている患者名をリストアップして備考に追加（忘れ防止）
@@ -1469,7 +1502,7 @@
                 visits: [{
                     time: timeStr,
                     location: timerInfo.name,
-                    duration: `${stayMin}分`,
+                    duration: stayDuration,
                     category: '自動滞在ログ',
                     notes: '入力なしのためGPSにより自動記録されました' + uncheckedPatients,
                     images: []
