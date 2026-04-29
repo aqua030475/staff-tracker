@@ -264,7 +264,7 @@ app.get('/api/stats/monthly', async (req, res) => {
         // 指定された月の訪問回数を集計し、患者テーブルと結合してフリガナを取得
         const query = `
             SELECT 
-                v.location as name, 
+                COALESCE(p.name, v.location) as name, 
                 MAX(p.name_kana) as name_kana,
                 COUNT(*) as count
             FROM visits v
@@ -276,8 +276,8 @@ app.get('/api/stats/monthly', async (req, res) => {
             )
             WHERE EXTRACT(YEAR FROM v.visit_date::date) = $1 
               AND EXTRACT(MONTH FROM v.visit_date::date) = $2
-            GROUP BY v.location
-            ORDER BY name_kana ASC NULLS LAST, v.location ASC
+            GROUP BY COALESCE(p.name, v.location)
+            ORDER BY name_kana ASC NULLS LAST, name ASC
         `;
         const result = await pool.query(query, [year, month]);
         res.json({ success: true, data: result.rows });
