@@ -263,20 +263,32 @@ app.get('/api/stats/monthly', async (req, res) => {
     try {
         // 指定された月の訪問回数を集計し、患者テーブルと結合してフリガナを取得
         const query = `
-            SELECT 
-                COALESCE(p.name, v.location) as name, 
-                MAX(p.name_kana) as name_kana,
-                COUNT(*) as count
-            FROM visits v
-            LEFT JOIN patients p ON (
-                v.location = p.name OR
-                v.location LIKE '%(' || p.name || ' 様)%' OR
-                v.location LIKE '%（' || p.name || ' 様）%' OR
-                v.location LIKE '%' || p.name || '%'
+            WITH visit_patient_mapping AS (
+                SELECT 
+                    v.id,
+                    v.location,
+                    v.visit_date,
+                    (
+                        SELECT p.name 
+                        FROM patients p 
+                        WHERE 
+                            v.location = p.name OR
+                            v.location LIKE '%(' || p.name || ' 様)%' OR
+                            v.location LIKE '%（' || p.name || ' 様）%'
+                        LIMIT 1
+                    ) as matched_name
+                FROM visits v
+                WHERE EXTRACT(YEAR FROM v.visit_date::date) = $1 
+                  AND EXTRACT(MONTH FROM v.visit_date::date) = $2
             )
-            WHERE EXTRACT(YEAR FROM v.visit_date::date) = $1 
-              AND EXTRACT(MONTH FROM v.visit_date::date) = $2
-            GROUP BY COALESCE(p.name, v.location)
+            SELECT 
+                COALESCE(m.matched_name, m.location) as name, 
+                MAX(p.name_kana) as name_kana,
+                COUNT(DISTINCT m.visit_date) as count,
+                COUNT(*) as total_records
+            FROM visit_patient_mapping m
+            LEFT JOIN patients p ON m.matched_name = p.name
+            GROUP BY COALESCE(m.matched_name, m.location)
             ORDER BY name_kana ASC NULLS LAST, name ASC
         `;
         const result = await pool.query(query, [year, month]);

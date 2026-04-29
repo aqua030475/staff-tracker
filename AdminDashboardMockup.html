@@ -2430,9 +2430,12 @@
                     }
                     result.data.forEach(item => {
                         const tr = document.createElement('tr');
+                        const hasDuplicates = item.total_records > item.count;
+                        const warningHtml = hasDuplicates ? `<span style="color: #ef4444; font-size: 0.75rem; margin-left: 8px; cursor: help;" title="同じ日に複数の記録があります (合計${item.total_records}件)">⚠️ 重複あり</span>` : '';
+                        
                         tr.innerHTML = `
                             <td style="padding: 12px; border-bottom: 1px solid var(--border);">${item.name_kana || '-'}</td>
-                            <td style="padding: 12px; border-bottom: 1px solid var(--border); font-weight: 600;">${item.name}</td>
+                            <td style="padding: 12px; border-bottom: 1px solid var(--border); font-weight: 600;">${item.name}${warningHtml}</td>
                             <td style="padding: 12px; border-bottom: 1px solid var(--border); text-align: center;"><span style="background: var(--primary); padding: 4px 10px; border-radius: 20px; font-weight: bold;">${item.count}回</span></td>
                         `;
                         tbody.appendChild(tr);
