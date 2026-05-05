@@ -779,11 +779,13 @@
                     console.log('✅ 全ての場所を座標ベースで統合しました:', FACILITIES_DATA);
                     if (FACILITIES_DATA.length === 0) {
                         addLog('⚠️ 有効な座標を持つデータがありません。', 'error');
+                    } else {
+                        addLog('✅ 施設データを読み込みました。', 'success');
                     }
                 }
             } catch (error) {
                 console.error('施設データの取得に失敗しました:', error);
-                // initial UI log text could be overwritten here if there's an error
+                addLog('❌ 施設データの取得に失敗しました。電波状況を確認してください。', 'error');
             }
         };
         
@@ -820,10 +822,15 @@
         };
 
         // トラッキング開始ボタン
-        btnStart.addEventListener('click', () => {
+        btnStart.addEventListener('click', async () => {
             if (!("geolocation" in navigator)) {
                 addLog("エラー: このブラウザは位置情報に対応していません。", "error");
                 return;
+            }
+
+            if (FACILITIES_DATA.length === 0) {
+                addLog("🔄 トラッキング開始前に施設データを再取得しています...", "success");
+                await loadFacilities();
             }
 
             permissionAlert.style.display = 'block';
@@ -972,7 +979,17 @@
         const manualFacilityModal = document.getElementById('manual-facility-select-modal');
         const manualFacilityContainer = document.getElementById('manual-facility-options-container');
 
-        btnDetectFacility.addEventListener('click', () => {
+        btnDetectFacility.addEventListener('click', async () => {
+            if (FACILITIES_DATA.length === 0) {
+                addLog('🔄 施設データが空のため、再取得を試みます...', 'success');
+                const prevText = btnDetectFacility.innerHTML;
+                btnDetectFacility.innerHTML = '⏳ 取得中...';
+                btnDetectFacility.disabled = true;
+                await loadFacilities();
+                btnDetectFacility.innerHTML = prevText;
+                btnDetectFacility.disabled = false;
+            }
+
             if (FACILITIES_DATA.length > 0) {
                 manualFacilityContainer.innerHTML = ''; // クリア
                 FACILITIES_DATA.forEach(facility => {
@@ -992,7 +1009,7 @@
                 });
                 manualFacilityModal.style.display = 'flex';
             } else {
-                alert('施設データがありません。サーバーに接続できているか、データが登録されているか確認してください。');
+                alert('施設データがありません。電波の良いところで再度お試しいただくか、アプリをリロードしてください。');
             }
         });
 
