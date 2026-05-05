@@ -581,6 +581,9 @@
         // --- スタッフ選択ロジック ---
         let currentStaff = null;
         let activeVisitTimers = {}; // 【新機能】滞在時間を記録するためのタイマー
+        const saveTimersToStorage = () => {
+            localStorage.setItem('tracker_activeVisitTimers', JSON.stringify(activeVisitTimers));
+        };
         
         // --- 節電モード(エコモード)用変数 ---
         let wakeLock = null;
@@ -790,7 +793,28 @@
         };
         
         // ページ読み込み時に施設データを取得
-        window.addEventListener('DOMContentLoaded', loadFacilities);
+        window.addEventListener('DOMContentLoaded', async () => {
+            await loadFacilities();
+            
+            // 滞在タイマーの復元
+            const savedTimers = localStorage.getItem('tracker_activeVisitTimers');
+            if (savedTimers) {
+                try {
+                    const parsed = JSON.parse(savedTimers);
+                    for (const key in parsed) {
+                        activeVisitTimers[key] = {
+                            arrivalTime: new Date(parsed[key].arrivalTime),
+                            name: parsed[key].name
+                        };
+                    }
+                } catch(e) { console.error('Timer parse error:', e); }
+            }
+
+            // トラッキングの自動復元
+            if (localStorage.getItem('tracker_isTracking') === 'true') {
+                btnStart.click();
+            }
+        });
 
         let currentFacilityName = '';
 
@@ -851,6 +875,7 @@
 
             // UI状態の更新
             isTracking = true;
+            localStorage.setItem('tracker_isTracking', 'true');
             btnStart.style.display = 'none';
             btnStop.style.display = 'block';
             statusBadge.classList.add('active');
@@ -864,13 +889,21 @@
             document.getElementById('btn-eco-toggle').style.display = 'block';
 
             // --- 稼働タイマーの開始 ---
-            sessionStartTime = new Date();
+            const savedStartTime = localStorage.getItem('tracker_sessionStartTime');
+            if (savedStartTime) {
+                sessionStartTime = new Date(savedStartTime);
+                addLog("🔄 前回の稼働セッションを復元しました。", "success");
+            } else {
+                sessionStartTime = new Date();
+                localStorage.setItem('tracker_sessionStartTime', sessionStartTime.toISOString());
+                addLog("🏁 稼働セッションを開始しました。", "success");
+            }
+            
             document.getElementById('tracking-timer-container').style.display = 'block';
             document.getElementById('session-history-container').style.display = 'block';
             
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(updateTrackingTimer, 1000);
-            addLog("🏁 稼働セッションを開始しました。", "success");
         });
 
         // タイマー更新関数
@@ -903,6 +936,7 @@
             }
 
             isTracking = false;
+            localStorage.removeItem('tracker_isTracking');
             btnStop.style.display = 'none';
             btnStart.style.display = 'block';
             statusBadge.classList.remove('active');
@@ -948,6 +982,9 @@
                 await saveWorkLog(sessionStartTime, endTime, diffMin);
                 
                 sessionStartTime = null;
+                localStorage.removeItem('tracker_sessionStartTime');
+                localStorage.removeItem('tracker_activeVisitTimers');
+                activeVisitTimers = {};
             }
 
             addLog("トラッキングを停止しました。", "success");
@@ -1244,6 +1281,7 @@
             // 【新機能】手動チェックインでも滞在時間の計測を開始する
             if (!activeVisitTimers[facility.id]) {
                 activeVisitTimers[facility.id] = { arrivalTime: new Date(), name: facility.name };
+                saveTimersToStorage();
                 addLog(`⏱️ [手動] ${facility.name} の滞在計測を開始しました。`);
             }
         };
@@ -1469,6 +1507,7 @@
                     facility.isInside = true;
                     // 到着時刻を記録
                     activeVisitTimers[facility.id] = { arrivalTime: new Date(), name: facility.name };
+                    saveTimersToStorage();
                     
                     addLog(`🎯 [自動検知] ${facility.name} への到着をGPSで検知しました！（誤差 ${Math.floor(dist)}m）`, "success");
                     openFacilityModal(facility);
@@ -1481,6 +1520,7 @@
                     if (activeVisitTimers[facility.id]) {
                         autoSaveVisit(facility.id, activeVisitTimers[facility.id]);
                         delete activeVisitTimers[facility.id];
+                        saveTimersToStorage();
                     }
                 }
             });
