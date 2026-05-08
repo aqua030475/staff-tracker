@@ -827,12 +827,21 @@
                         }
 
                         // 個人宅の患者も統合
+                        let combinedKana = "";
+                        if (group.facilities.length > 0) {
+                            combinedKana = group.facilities.map(f => f.name).join('・');
+                        }
+
                         if (group.individualPatients.length > 0) {
                             const pNames = group.individualPatients.map(p => p.name.replace(' 様', '').trim()).join('・') + " 様宅";
+                            const pKanas = group.individualPatients.map(p => (p.name_kana || p.name).replace(' 様', '').trim()).join('・');
+                            
                             if (combinedName) {
                                 combinedName += ` (${pNames})`;
+                                combinedKana += ` (${pKanas})`;
                             } else {
                                 combinedName = pNames;
+                                combinedKana = pKanas;
                                 representativeAddress = group.individualPatients[0].address || "個人宅";
                             }
                             combinedPatients = combinedPatients.concat(group.individualPatients);
@@ -841,6 +850,7 @@
                         processedData.push({
                             id: `grouped_loc_${index}`,
                             name: combinedName,
+                            name_kana: combinedKana,
                             lat: group.lat,
                             lng: group.lng,
                             address: representativeAddress || "住所情報なし",
@@ -1130,12 +1140,16 @@
                     'ライフエビデンス名東': 'らいふえびでんすめいとう'
                 };
                 
-                const getKana = (name) => {
-                    const cleanName = name.replace(/🏠 |📍 /g, '');
+                const getKana = (facility) => {
+                    // 個人宅など、データ生成時にフリガナが作成されている場合は優先使用
+                    if (facility.name_kana) {
+                        return facility.name_kana;
+                    }
+                    const cleanName = facility.name.replace(/🏠 |📍 /g, '');
                     return kanaMap[cleanName] || cleanName;
                 };
 
-                const sortedFacilities = [...FACILITIES_DATA].sort((a, b) => getKana(a.name).localeCompare(getKana(b.name), 'ja'));
+                const sortedFacilities = [...FACILITIES_DATA].sort((a, b) => getKana(a).localeCompare(getKana(b), 'ja'));
                 
                 sortedFacilities.forEach(facility => {
                     const btn = document.createElement('div');

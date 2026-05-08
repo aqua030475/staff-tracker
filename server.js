@@ -203,6 +203,9 @@ app.get('/admin', (req, res) => {
 
 // ブラウザで https://xxx.onrender.com/staff にアクセスしたとき（スマホ用）
 app.get('/staff', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
     res.sendFile(path.join(__dirname, 'StaffAppMockup.html'));
 });
 
@@ -620,6 +623,18 @@ app.delete('/api/visits/:id', adminAuth, async (req, res) => {
     }
 });
 
+// スタッフ用: 訪問記録の削除API (当日分の誤登録などを削除)
+app.delete('/api/staff/visits/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await pool.query("DELETE FROM visits WHERE id = $1", [id]);
+        res.status(200).json({ success: true, message: '訪問記録を削除しました。' });
+    } catch (err) {
+        console.error('❌ スタッフ用訪問記録削除エラー:', err.message);
+        res.status(500).json({ success: false, message: '削除エラー', error: err.message });
+    }
+});
+
 // ==========================================
 // 施設・患者管理API
 // ==========================================
@@ -645,6 +660,7 @@ app.get('/api/facilities', async (req, res) => {
                 patients: patients.filter(p => p.facility_id === f.id).map(p => ({
                     id: p.id,
                     name: p.name,
+                    name_kana: p.name_kana,
                     room: p.room,
                     lat: p.lat,
                     lng: p.lng,
@@ -705,6 +721,27 @@ app.post('/api/patients', adminAuth, async (req, res) => {
         if (err.message.includes('unique constraint')) {
             return res.status(400).json({ success: false, message: 'この患者IDは既に使用されています。' });
         }
+        res.status(500).json({ success: false, message: 'データベース保存エラー', error: err.message });
+    }
+});
+
+// スタッフ用: 新規患者の追加API (現場で即座に追加するため)
+app.post('/api/staff/patients', async (req, res) => {
+    const { id, facility_id, name, name_kana, room } = req.body;
+    if (!id || !facility_id || !name) {
+         return res.status(400).json({ success: false, message: '必要なデータが不足しています。' });
+    }
+    try {
+        await pool.query(
+            "INSERT INTO patients (id, facility_id, name, name_kana, room) VALUES ($1, $2, $3, $4, $5)",
+            [id, facility_id, name, name_kana || null, room || '']
+        );
+        res.status(200).json({ success: true, message: '患者を追加しました。' });
+    } catch (err) {
+        if (err.message.includes('unique constraint')) {
+            return res.status(400).json({ success: false, message: 'この患者IDは既に使用されています。' });
+        }
+        console.error('❌ スタッフ用患者追加エラー:', err.message);
         res.status(500).json({ success: false, message: 'データベース保存エラー', error: err.message });
     }
 });
