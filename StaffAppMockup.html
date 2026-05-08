@@ -1099,7 +1099,11 @@
 
             if (FACILITIES_DATA.length > 0) {
                 manualFacilityContainer.innerHTML = ''; // クリア
-                FACILITIES_DATA.forEach(facility => {
+                
+                // 名前のあいうえお順（日本語ローケール）でソート
+                const sortedFacilities = [...FACILITIES_DATA].sort((a, b) => a.name.localeCompare(b.name, 'ja'));
+                
+                sortedFacilities.forEach(facility => {
                     const btn = document.createElement('div');
                     btn.className = 'staff-opt-btn';
                     btn.style.textAlign = 'left';
