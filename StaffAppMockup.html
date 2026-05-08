@@ -474,11 +474,19 @@
 
 
 
-            <!-- 手動の施設検知デモボタン -->
-            <div id="facility-trigger-container" style="display: none; margin-top: 16px;">
+            <!-- 手動操作ボタン群 -->
+            <div id="facility-trigger-container" style="display: none; margin-top: 16px; flex-direction: column; gap: 12px;">
                 <button id="btn-detect-facility" class="btn" style="background-color: var(--success); color: white; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
                     📍 【手動】到着検知
                 </button>
+                <div style="display: flex; gap: 12px;">
+                    <button id="btn-view-history" class="btn" style="background-color: #475569; color: white; box-shadow: 0 4px 12px rgba(0,0,0,0.2); flex: 1; font-size: 0.95rem; padding: 12px;">
+                        📅 本日の履歴・修正
+                    </button>
+                    <button id="btn-add-patient" class="btn" style="background-color: #8b5cf6; color: white; box-shadow: 0 4px 12px rgba(139, 92, 246, 0.3); flex: 1; font-size: 0.95rem; padding: 12px;">
+                        👤 新規患者追加
+                    </button>
+                </div>
             </div>
 
             <div id="permission-alert">
@@ -537,8 +545,30 @@
     <div class="facility-modal-overlay" id="facility-modal">
         <div class="facility-modal-content">
             <h3 style="margin-bottom: 8px; font-size: 1.2rem; color: var(--text-main);">📍 さくら老人ホーム</h3>
-            <p style="color: var(--text-muted); font-size: 0.95rem;">【特別設定施設】患者のチェックと歩行訓練記録をお願いします。</p>
+            <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 16px;">患者のチェックと歩行訓練記録をお願いします。</p>
             
+            <!-- 【追加】手動での時間変更UI -->
+            <div style="display: flex; gap: 12px; margin-bottom: 16px; background: #0f172a; padding: 12px; border-radius: 8px; border: 1px solid var(--border);">
+                <div style="flex: 1;">
+                    <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 4px;">訪問時刻 (変更可)</label>
+                    <input type="time" id="visit-time-input" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: white; font-size: 1rem;">
+                </div>
+                <div style="flex: 1;">
+                    <label style="font-size: 0.85rem; color: var(--text-muted); display: block; margin-bottom: 4px;">滞在時間</label>
+                    <select id="visit-duration-input" style="width: 100%; padding: 8px; border-radius: 6px; border: 1px solid var(--border); background: #1e293b; color: white; font-size: 1rem;">
+                        <option value="自動">自動計測</option>
+                        <option value="5分">5分</option>
+                        <option value="10分">10分</option>
+                        <option value="15分">15分</option>
+                        <option value="20分">20分</option>
+                        <option value="30分">30分</option>
+                        <option value="40分">40分</option>
+                        <option value="45分">45分</option>
+                        <option value="60分">60分</option>
+                    </select>
+                </div>
+            </div>
+
             <div class="patient-list">
                 <!-- JSで施設ごとに動的に患者が追加されます -->
             </div>
@@ -557,6 +587,46 @@
             <!-- JSで生成 -->
         </div>
         <button id="btn-close-manual-facility" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 24px; box-shadow: none;">閉じる</button>
+    </div>
+
+    <!-- 本日の訪問履歴モーダル -->
+    <div id="history-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-body); color: var(--text-main); z-index: 3000; display: none; flex-direction: column; padding: 40px 20px; overflow-y: auto;">
+        <h2 style="margin-bottom: 16px; text-align: center;">📅 本日の訪問履歴</h2>
+        <div id="history-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
+            <!-- JSで履歴生成 -->
+        </div>
+        <button id="btn-close-history" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 24px; box-shadow: none;">閉じる</button>
+    </div>
+
+    <!-- 新規患者追加モーダル -->
+    <div id="add-patient-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-body); color: var(--text-main); z-index: 3000; display: none; flex-direction: column; padding: 40px 20px; overflow-y: auto; text-align: left;">
+        <h2 style="margin-bottom: 8px; text-align: center;">👤 新規患者の追加</h2>
+        <p style="color: var(--text-muted); margin-bottom: 24px; text-align: center;">現場で新しいご利用者様を登録します</p>
+        
+        <div style="display: flex; flex-direction: column; gap: 16px; background: var(--bg-card); padding: 20px; border-radius: 12px; border: 1px solid var(--border);">
+            <div>
+                <label style="display: block; margin-bottom: 8px; color: var(--text-muted);">患者名 (例: 山田 太郎 様)</label>
+                <input type="text" id="new-patient-name" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: white; font-size: 1rem;" placeholder="お名前を入力">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 8px; color: var(--text-muted);">フリガナ</label>
+                <input type="text" id="new-patient-kana" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: white; font-size: 1rem;" placeholder="ヤマダ タロウ">
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 8px; color: var(--text-muted);">所属施設 / 個人宅</label>
+                <select id="new-patient-facility" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: white; font-size: 1rem;">
+                    <option value="home">🏠 個人宅</option>
+                    <!-- JSで施設リスト追加 -->
+                </select>
+            </div>
+            <div>
+                <label style="display: block; margin-bottom: 8px; color: var(--text-muted);">部屋番号 (任意)</label>
+                <input type="text" id="new-patient-room" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: white; font-size: 1rem;" placeholder="例: 101">
+            </div>
+            
+            <button id="btn-save-new-patient" class="btn btn-start" style="margin-top: 8px;">この内容で登録する</button>
+        </div>
+        <button id="btn-close-add-patient" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 16px; box-shadow: none;">キャンセル</button>
     </div>
 
 
@@ -883,8 +953,8 @@
             permissionAlert.style.display = 'none';
             dataDisplay.style.display = 'block';
             
-            // 施設手動チェックインボタンを表示
-            triggerContainer.style.display = 'block';
+            // 施設手動チェックインボタン等を表示
+            triggerContainer.style.display = 'flex';
             // 節電モードボタンを表示
             document.getElementById('btn-eco-toggle').style.display = 'block';
 
@@ -1220,6 +1290,11 @@
             // タイトルなどの書き換え
             document.querySelector('.facility-modal-content h3').innerText = `📍 ${facility.name}`;
             
+            // 時間と滞在時間の初期化
+            const now = new Date();
+            document.getElementById('visit-time-input').value = now.toTimeString().substring(0, 5);
+            document.getElementById('visit-duration-input').value = '自動';
+            
             // 患者リストの動的生成
             const patientListContainer = document.querySelector('.patient-list');
             patientListContainer.innerHTML = '';
@@ -1297,22 +1372,34 @@
             // 滞在時間の計算 (到着検知タイマーがある場合)
             const timerInfo = activeVisitTimers[currentFacilityId];
             
-            // 【改善】保存時刻ではなく「到着時刻」を開始時刻として使用する
-            let visitStartTime = now;
-            if (timerInfo && timerInfo.arrivalTime) {
-                visitStartTime = timerInfo.arrivalTime;
+            // UIから時間と滞在時間を取得
+            const manualTime = document.getElementById('visit-time-input').value;
+            const manualDuration = document.getElementById('visit-duration-input').value;
+            
+            let timeStr = manualTime;
+            let stayDuration = 'チェックイン済み';
+            let visitCategory = '訪問実績';
+            let isManualEdit = false;
+            
+            // 初期状態(現在の時分)と比較して変更されていれば手動補正扱いにする
+            const currentHm = new Date().toTimeString().substring(0, 5);
+            if (manualTime !== currentHm || manualDuration !== '自動') {
+                isManualEdit = true;
+                visitCategory = '訪問実績 (手動補正)';
             }
-            const timeStr = visitStartTime.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+            
+            if (manualDuration === '自動') {
+                if (timerInfo && timerInfo.arrivalTime) {
+                    const stayMs = new Date() - timerInfo.arrivalTime;
+                    const stayMin = Math.round(stayMs / 60000);
+                    if (stayMin > 0) stayDuration = `${stayMin}分`;
+                }
+            } else {
+                stayDuration = manualDuration;
+            }
 
             // 選択されたスタッフ名を使用 (空白をトリミングして一致精度を向上)
             const staffName = currentStaff ? currentStaff.name.trim() : "不明なスタッフ";
-            
-            let stayDuration = 'チェックイン済み';
-            if (timerInfo && timerInfo.arrivalTime) {
-                const stayMs = new Date() - timerInfo.arrivalTime;
-                const stayMin = Math.round(stayMs / 60000);
-                if (stayMin > 0) stayDuration = `${stayMin}分`;
-            }
 
             checkboxes.forEach(cb => {
                 const name = cb.value;
@@ -1334,7 +1421,7 @@
                     time: timeStr,
                     location: `${currentFacilityName} (${name} 様)`,
                     duration: stayDuration,
-                    category: '訪問実績',
+                    category: visitCategory,
                     notes: notes,
                     images: photos
                 });
@@ -1683,6 +1770,170 @@
             } catch (e) {
                 console.error('WorkLog Save Error:', e);
             }
+        }
+
+        // ==================================
+        // 履歴と修正関連処理
+        // ==================================
+        const btnViewHistory = document.getElementById('btn-view-history');
+        const historyModal = document.getElementById('history-modal');
+        const btnCloseHistory = document.getElementById('btn-close-history');
+        const historyListContainer = document.getElementById('history-list-container');
+
+        if (btnViewHistory) {
+            btnViewHistory.addEventListener('click', async () => {
+                const now = new Date();
+                const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                
+                historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px;">読み込み中...</div>';
+                historyModal.style.display = 'flex';
+
+                try {
+                    const res = await fetch(`${API_BASE}/api/visits?date=${dateStr}`);
+                    const result = await res.json();
+                    
+                    historyListContainer.innerHTML = '';
+                    
+                    if (result.success && result.data.length > 0) {
+                        result.data.forEach(v => {
+                            const item = document.createElement('div');
+                            item.style.cssText = 'background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: relative;';
+                            item.innerHTML = `
+                                <div style="font-size: 0.85rem; color: var(--text-muted);">${v.time_range} - ${v.staff_name}</div>
+                                <div style="font-weight: 600; font-size: 1.05rem; margin-top: 4px;">${v.location}</div>
+                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">滞在: ${v.duration} / ${v.category}</div>
+                                <button class="btn-delete-visit" data-id="${v.id}" style="position: absolute; right: 12px; top: 12px; background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid var(--danger); border-radius: 4px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer;">削除</button>
+                            `;
+                            historyListContainer.appendChild(item);
+                        });
+                        
+                        document.querySelectorAll('.btn-delete-visit').forEach(btn => {
+                            btn.addEventListener('click', async (e) => {
+                                if (confirm('この訪問記録を削除しますか？')) {
+                                    const id = e.target.dataset.id;
+                                    e.target.innerText = '削除中...';
+                                    e.target.disabled = true;
+                                    try {
+                                        const delRes = await fetch(`${API_BASE}/api/staff/visits/${id}`, { method: 'DELETE' });
+                                        const delResult = await delRes.json();
+                                        if (delResult.success) {
+                                            e.target.closest('div').remove();
+                                            addLog('訪問記録を削除しました。', 'success');
+                                        } else {
+                                            alert('削除に失敗しました: ' + delResult.message);
+                                            e.target.innerText = '削除';
+                                            e.target.disabled = false;
+                                        }
+                                    } catch (err) {
+                                        alert('通信エラーが発生しました。');
+                                        e.target.innerText = '削除';
+                                        e.target.disabled = false;
+                                    }
+                                }
+                            });
+                        });
+                    } else {
+                        historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">本日の訪問記録はありません。</div>';
+                    }
+                } catch (e) {
+                    historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger);">取得に失敗しました。</div>';
+                }
+            });
+        }
+
+        if (btnCloseHistory) {
+            btnCloseHistory.addEventListener('click', () => {
+                historyModal.style.display = 'none';
+            });
+        }
+
+        // ==================================
+        // 患者追加関連処理
+        // ==================================
+        const btnAddPatient = document.getElementById('btn-add-patient');
+        const addPatientModal = document.getElementById('add-patient-modal');
+        const btnCloseAddPatient = document.getElementById('btn-close-add-patient');
+        const btnSaveNewPatient = document.getElementById('btn-save-new-patient');
+        const selectFacility = document.getElementById('new-patient-facility');
+
+        if (btnAddPatient) {
+            btnAddPatient.addEventListener('click', () => {
+                // 施設リストを更新
+                selectFacility.innerHTML = '<option value="home">🏠 個人宅</option>';
+
+                // シンプルにAPIから最新の施設一覧を取得して表示
+                fetch(`${API_BASE}/api/facilities`).then(res => res.json()).then(result => {
+                    if (result.success) {
+                        result.data.forEach(fac => {
+                            if (fac.id !== 'home') {
+                                const opt = document.createElement('option');
+                                opt.value = fac.id;
+                                opt.innerText = `🏢 ${fac.name}`;
+                                selectFacility.appendChild(opt);
+                            }
+                        });
+                    }
+                });
+
+                addPatientModal.style.display = 'flex';
+            });
+        }
+
+        if (btnCloseAddPatient) {
+            btnCloseAddPatient.addEventListener('click', () => {
+                addPatientModal.style.display = 'none';
+            });
+        }
+
+        if (btnSaveNewPatient) {
+            btnSaveNewPatient.addEventListener('click', async () => {
+                const name = document.getElementById('new-patient-name').value.trim();
+                const name_kana = document.getElementById('new-patient-kana').value.trim();
+                const facility_id = document.getElementById('new-patient-facility').value;
+                const room = document.getElementById('new-patient-room').value.trim();
+
+                if (!name) {
+                    alert('患者名を入力してください。');
+                    return;
+                }
+
+                // IDはランダム生成
+                const newId = 'p_' + Date.now() + '_' + Math.floor(Math.random() * 1000);
+
+                const originalText = btnSaveNewPatient.innerText;
+                btnSaveNewPatient.innerText = '登録中...';
+                btnSaveNewPatient.disabled = true;
+
+                try {
+                    const res = await fetch(`${API_BASE}/api/staff/patients`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ id: newId, facility_id, name, name_kana, room })
+                    });
+                    const result = await res.json();
+                    
+                    if (result.success) {
+                        alert('患者を登録しました！すぐに一覧に反映されます。');
+                        addPatientModal.style.display = 'none';
+                        
+                        // 入力欄リセット
+                        document.getElementById('new-patient-name').value = '';
+                        document.getElementById('new-patient-kana').value = '';
+                        document.getElementById('new-patient-room').value = '';
+
+                        // 施設データの再読み込みを行い、手動検知リスト等に反映
+                        await loadFacilities();
+                        addLog(`👤 新規患者「${name} 様」を追加しました。`, 'success');
+                    } else {
+                        alert('登録に失敗しました: ' + result.message);
+                    }
+                } catch (err) {
+                    alert('通信エラーが発生しました。');
+                } finally {
+                    btnSaveNewPatient.innerText = originalText;
+                    btnSaveNewPatient.disabled = false;
+                }
+            });
         }
 
     </script>
