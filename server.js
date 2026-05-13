@@ -412,7 +412,8 @@ app.post('/api/save-visit', async (req, res) => {
                     body: JSON.stringify({
                         staffName,
                         date,
-                        visits: visits.map(v => ({
+                        visits: visits.map((v, index) => ({
+                            id: createdIds[index],
                             time: v.time,
                             location: v.location,
                             duration: v.duration,
@@ -556,6 +557,7 @@ app.get('/api/export-sheet', adminAuth, async (req, res) => {
                     staffName: staffName,
                     date: date,
                     visits: staffData.visits.map(v => ({
+                        id: v.id,
                         time: v.time_range,
                         location: v.location,
                         duration: v.duration,
@@ -616,6 +618,26 @@ app.delete('/api/visits/:id', adminAuth, async (req, res) => {
     const { id } = req.params;
     try {
         await pool.query("DELETE FROM visits WHERE id = $1", [id]);
+        
+        // Webhookへの削除通知送信
+        try {
+            const settingsResult = await pool.query("SELECT value FROM settings WHERE key = 'google_sheet_webhook_url'");
+            if (settingsResult.rows.length > 0 && settingsResult.rows[0].value) {
+                const webhookUrl = settingsResult.rows[0].value;
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'delete',
+                        visitId: id
+                    })
+                });
+                console.log(`✅ 削除Webhookを送信しました: ID=${id}`);
+            }
+        } catch (webhookErr) {
+            console.error('❌ 削除Webhookの送信に失敗しました:', webhookErr.message);
+        }
+
         res.status(200).json({ success: true, message: '訪問記録を削除しました。' });
     } catch (err) {
         console.error('❌ 訪問記録削除エラー:', err.message);
@@ -628,6 +650,26 @@ app.delete('/api/staff/visits/:id', async (req, res) => {
     const { id } = req.params;
     try {
         await pool.query("DELETE FROM visits WHERE id = $1", [id]);
+        
+        // Webhookへの削除通知送信
+        try {
+            const settingsResult = await pool.query("SELECT value FROM settings WHERE key = 'google_sheet_webhook_url'");
+            if (settingsResult.rows.length > 0 && settingsResult.rows[0].value) {
+                const webhookUrl = settingsResult.rows[0].value;
+                await fetch(webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        action: 'delete',
+                        visitId: id
+                    })
+                });
+                console.log(`✅ 削除Webhook(スタッフ)を送信しました: ID=${id}`);
+            }
+        } catch (webhookErr) {
+            console.error('❌ 削除Webhookの送信に失敗しました:', webhookErr.message);
+        }
+
         res.status(200).json({ success: true, message: '訪問記録を削除しました。' });
     } catch (err) {
         console.error('❌ スタッフ用訪問記録削除エラー:', err.message);
