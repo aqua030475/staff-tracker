@@ -468,6 +468,14 @@
                 <span>待機中</span>
             </div>
 
+            <!-- 今日の訪問ルート表示エリア -->
+            <div id="expected-route-container" style="display: none; margin-top: 16px; margin-bottom: 24px; padding: 16px; background: #1e293b; border-radius: 12px; border: 1px solid var(--primary);">
+                <h3 style="margin-top: 0; margin-bottom: 12px; font-size: 1.1rem; color: #a855f7; display: flex; align-items: center; gap: 8px;">📋 今日の訪問ルート（予測）</h3>
+                <div id="expected-route-list" style="display: flex; flex-direction: column; gap: 8px;">
+                    <!-- JSで動的に追加 -->
+                </div>
+            </div>
+
             <button id="btn-start" class="btn btn-start">トラッキング開始</button>
             <button id="btn-stop" class="btn btn-stop">トラッキング停止</button>
             <button id="btn-eco-toggle" class="btn btn-eco-toggle" style="display: none;">🔋 節電モード</button>
@@ -740,9 +748,44 @@
             }
         };
 
+        let expectedRouteData = [];
+
+        const loadExpectedRoute = async (staffName) => {
+            const container = document.getElementById('expected-route-container');
+            const list = document.getElementById('expected-route-list');
+            try {
+                let jsDow = new Date().getDay();
+                let dow = jsDow === 0 ? 7 : jsDow; // ISODOW (1=Mon, 7=Sun)
+                
+                const res = await fetch(`${API_BASE}/api/expected-route?staffName=${encodeURIComponent(staffName)}&dow=${dow}`);
+                const result = await res.json();
+                
+                if (result.success && result.data.length > 0) {
+                    expectedRouteData = result.data;
+                    list.innerHTML = '';
+                    result.data.forEach((route) => {
+                        const item = document.createElement('div');
+                        item.style.padding = '10px';
+                        item.style.backgroundColor = 'rgba(255,255,255,0.05)';
+                        item.style.borderRadius = '8px';
+                        item.style.fontSize = '0.9rem';
+                        item.innerHTML = `<span style="color: var(--primary); font-weight: bold; margin-right: 8px;">${route.expected_time}</span> <span>${route.location}</span>`;
+                        list.appendChild(item);
+                    });
+                    container.style.display = 'block';
+                } else {
+                    container.style.display = 'none';
+                    expectedRouteData = [];
+                }
+            } catch (e) {
+                console.error('Failed to load expected route', e);
+            }
+        };
+
         const updateHeader = () => {
             if (currentStaff) {
                 document.getElementById('header-staff-name').innerText = currentStaff.name;
+                loadExpectedRoute(currentStaff.name);
             }
         };
 
@@ -1452,6 +1495,47 @@
 
             // 選択されたスタッフ名を使用 (空白をトリミングして一致精度を向上)
             const staffName = currentStaff ? currentStaff.name.trim() : "不明なスタッフ";
+
+            // --- 【新機能】手動入力時間の妥当性チェック (AM/PM間違い防止など) ---
+            if (isManualEdit && expectedRouteData.length > 0 && checkboxes.length > 0) {
+                // 選択された患者に関連する予測ルートを探す
+                let maxDiffHours = 0;
+                let matchedExpectedTime = null;
+                
+                checkboxes.forEach(cb => {
+                    const patientName = cb.value;
+                    const expectedMatch = expectedRouteData.find(r => r.location.includes(patientName));
+                    if (expectedMatch) {
+                        // 予測時間と入力時間の差を計算
+                        const inputParts = manualTime.split(':');
+                        const expectedParts = expectedMatch.expected_time.split(':');
+                        if (inputParts.length === 2 && expectedParts.length === 2) {
+                            const inputMin = parseInt(inputParts[0]) * 60 + parseInt(inputParts[1]);
+                            const expectedMin = parseInt(expectedParts[0]) * 60 + parseInt(expectedParts[1]);
+                            
+                            // 日をまたぐケースも考慮（例：23:00と01:00）
+                            let diffMin = Math.abs(inputMin - expectedMin);
+                            if (diffMin > 12 * 60) {
+                                diffMin = 24 * 60 - diffMin;
+                            }
+                            
+                            const diffHours = diffMin / 60;
+                            if (diffHours > maxDiffHours) {
+                                maxDiffHours = diffHours;
+                                matchedExpectedTime = expectedMatch.expected_time;
+                            }
+                        }
+                    }
+                });
+
+                // 予測と2時間以上離れていたら警告
+                if (maxDiffHours >= 2 && matchedExpectedTime) {
+                    const confirmed = confirm(`⚠️ 過去の記録では【${matchedExpectedTime}】頃の訪問ですが、入力された時間は【${manualTime}】です。\n\nAM/PMの間違いなどはありませんか？\nこのまま登録してもよろしいですか？`);
+                    if (!confirmed) {
+                        return; // 保存処理を中断
+                    }
+                }
+            }
 
             checkboxes.forEach(cb => {
                 const name = cb.value;

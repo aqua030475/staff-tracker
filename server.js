@@ -575,6 +575,41 @@ app.get('/api/export-sheet', adminAuth, async (req, res) => {
     }
 });
 
+// 過去の実績から予測ルートを取得するAPI
+app.get('/api/expected-route', async (req, res) => {
+    const { staffName, dow } = req.query; // dow: 1(月) ~ 7(日)
+    
+    if (!staffName || !dow) {
+        return res.status(400).json({ success: false, message: '必要なパラメータ(staffName, dow)が不足しています。' });
+    }
+
+    try {
+        const query = `
+            SELECT 
+                staff_name,
+                EXTRACT(ISODOW FROM CAST(visit_date AS DATE)) as dow,
+                location, 
+                mode() within group (order by time_range) as expected_time,
+                count(*) as visit_count
+            FROM visits 
+            WHERE category NOT LIKE '%稼働記録%' AND category NOT LIKE '%稼働ログ%'
+              AND location NOT LIKE '%システム警告%'
+              AND staff_name = $1
+            GROUP BY staff_name, EXTRACT(ISODOW FROM CAST(visit_date AS DATE)), location
+            HAVING count(*) >= 2
+            ORDER BY expected_time ASC
+        `;
+        
+        // ISODOWで比較するため、取得したdowでフィルタリング
+        const result = await pool.query(`SELECT * FROM (${query}) AS sub WHERE dow = $2`, [staffName.trim(), dow]);
+        
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('❌ ルート予測APIエラー:', err.message);
+        res.status(500).json({ success: false, message: 'データベース検索エラー', error: err.message });
+    }
+});
+
 // 訪問履歴の検索API (画像データも結合して取得)
 app.get('/api/visits', async (req, res) => {
     const { staffName, date, patientName } = req.query;
