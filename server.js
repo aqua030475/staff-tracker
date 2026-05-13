@@ -595,6 +595,7 @@ app.get('/api/expected-route', async (req, res) => {
             WHERE category NOT LIKE '%稼働記録%' AND category NOT LIKE '%稼働ログ%'
               AND location NOT LIKE '%システム警告%'
               AND staff_name = $1
+              AND CAST(visit_date AS DATE) >= CURRENT_DATE - INTERVAL '1 month'
             GROUP BY staff_name, EXTRACT(ISODOW FROM CAST(visit_date AS DATE)), location
             HAVING count(*) >= 2
             ORDER BY expected_time ASC
