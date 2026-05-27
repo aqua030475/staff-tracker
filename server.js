@@ -611,6 +611,26 @@ app.get('/api/expected-route', async (req, res) => {
     }
 });
 
+// 直近1ヶ月の訪問メモ（notesあり）を取得するAPI (管理者認証)
+app.get('/api/recent-memos', adminAuth, async (req, res) => {
+    try {
+        const query = `
+            SELECT v.id, v.staff_name, v.visit_date, v.time_range, v.location, v.notes, v.created_at, string_agg(i.image_path, ',') as images
+            FROM visits v
+            LEFT JOIN visit_images i ON v.id = i.visit_id
+            WHERE v.notes IS NOT NULL AND TRIM(v.notes) <> ''
+              AND v.created_at >= NOW() - INTERVAL '1 month'
+            GROUP BY v.id
+            ORDER BY v.created_at DESC
+        `;
+        const result = await pool.query(query);
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('❌ 訪問メモ取得エラー:', err.message);
+        res.status(500).json({ success: false, message: 'データベース検索エラー', error: err.message });
+    }
+});
+
 // 訪問履歴の検索API (画像データも結合して取得)
 app.get('/api/visits', async (req, res) => {
     const { staffName, date, patientName } = req.query;
