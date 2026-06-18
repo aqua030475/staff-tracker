@@ -1161,6 +1161,28 @@
                             </div>`;
                         }
 
+                        // Parse walking training
+                        let walkBadgeHtml = '';
+                        let displayNotes = item.notes || '';
+                        if (item.notes && item.notes.includes('【歩行訓練】')) {
+                            const match = item.notes.match(/【歩行訓練】([^\n]+)/);
+                            if (match) {
+                                const walkInfo = match[1];
+                                const isImplemented = walkInfo.includes('実施:') && !walkInfo.includes('未実施');
+                                const badgeStyle = isImplemented 
+                                    ? 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);' 
+                                    : 'background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);';
+                                
+                                const cleanInfo = walkInfo.replace('実施: ', '').replace('未実施 (理由: ', '未実施 - 理由: ').replace(')', '');
+                                walkBadgeHtml = `
+                                    <div style="padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; width: fit-content; margin-top: 4px; ${badgeStyle}">
+                                        🚶‍♂️ 歩行訓練: ${cleanInfo}
+                                    </div>
+                                `;
+                                displayNotes = item.notes.replace(/【歩行訓練】[^\n]+\n?/, '').trim();
+                            }
+                        }
+
                         div.innerHTML = `
                             <div class="timeline-marker"></div>
                             <div style="display: flex; justify-content: space-between; align-items: flex-start;">
@@ -1170,7 +1192,8 @@
                                 </div>
                                 <button onclick="deleteVisit('${item.id}')" style="background:none; border:none; color:#ef4444; cursor:pointer; font-size:1.2rem; padding:0 5px;" title="この記録を削除">🗑️</button>
                             </div>
-                            ${item.notes ? `<div class="timeline-notes">${item.notes}</div>` : ''}
+                            ${walkBadgeHtml}
+                            ${displayNotes ? `<div class="timeline-notes" style="white-space: pre-wrap;">${displayNotes}</div>` : ''}
                             ${photosHtml}
                             <div class="stay-duration" style="margin-top: 8px;">✅ ${item.duration}</div>
                         `;
@@ -2393,6 +2416,28 @@
                         const minutes = String(date.getMinutes()).padStart(2, '0');
                         const timeStr = `${month}/${day} ${hours}:${minutes}`;
 
+                        // Parse walking training
+                        let walkBadgeHtml = '';
+                        let displayNotes = item.notes || '';
+                        if (item.notes && item.notes.includes('【歩行訓練】')) {
+                            const match = item.notes.match(/【歩行訓練】([^\n]+)/);
+                            if (match) {
+                                const walkInfo = match[1];
+                                const isImplemented = walkInfo.includes('実施:') && !walkInfo.includes('未実施');
+                                const badgeStyle = isImplemented 
+                                    ? 'background: rgba(16, 185, 129, 0.15); color: #10b981; border: 1px solid rgba(16, 185, 129, 0.3);' 
+                                    : 'background: rgba(239, 68, 68, 0.15); color: #ef4444; border: 1px solid rgba(239, 68, 68, 0.3);';
+                                
+                                const cleanInfo = walkInfo.replace('実施: ', '').replace('未実施 (理由: ', '未実施 - 理由: ').replace(')', '');
+                                walkBadgeHtml = `
+                                    <div style="padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; width: fit-content; margin-top: 4px; ${badgeStyle}">
+                                        🚶‍♂️ 歩行訓練: ${cleanInfo}
+                                    </div>
+                                `;
+                                displayNotes = item.notes.replace(/【歩行訓練】[^\n]+\n?/, '').trim();
+                            }
+                        }
+
                         div.innerHTML = `
                             <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed var(--border); padding-bottom: 6px;">
                                 <span style="font-weight: 700; color: var(--primary);">${item.staff_name}</span>
@@ -2401,7 +2446,8 @@
                             <div style="font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 4px;">
                                 📍 <span>${item.location}</span>
                             </div>
-                            <div class="timeline-notes" style="margin-top: 0; padding: 8px 10px; background: var(--bg-input); border-left: 3px solid var(--primary); font-size: 0.85rem; border-radius: 6px; border-top: none; border-right: none; border-bottom: none;">${item.notes}</div>
+                            ${walkBadgeHtml}
+                            ${displayNotes ? `<div class="timeline-notes" style="margin-top: 4px; padding: 8px 10px; background: var(--bg-input); border-left: 3px solid var(--primary); font-size: 0.85rem; border-radius: 6px; border-top: none; border-right: none; border-bottom: none; white-space: pre-wrap;">${displayNotes}</div>` : ''}
                             ${photosHtml}
                         `;
                         container.appendChild(div);

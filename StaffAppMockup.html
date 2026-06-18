@@ -600,6 +600,10 @@
     <!-- 本日の訪問履歴モーダル -->
     <div id="history-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-body); color: var(--text-main); z-index: 3000; display: none; flex-direction: column; padding: 40px 20px; overflow-y: auto;">
         <h2 style="margin-bottom: 16px; text-align: center;">📅 本日の訪問履歴</h2>
+        <div style="display: flex; gap: 8px; margin-bottom: 16px; justify-content: center;">
+            <button id="btn-history-filter-mine" class="btn" style="flex: 1; padding: 10px; font-size: 0.9rem; background: var(--primary); color: white; border-radius: 8px; border: none; font-weight: bold; cursor: pointer;">自分の記録</button>
+            <button id="btn-history-filter-all" class="btn" style="flex: 1; padding: 10px; font-size: 0.9rem; background: #334155; color: var(--text-muted); border-radius: 8px; border: none; font-weight: bold; cursor: pointer;">全員の記録</button>
+        </div>
         <div id="history-list-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
             <!-- JSで履歴生成 -->
         </div>
@@ -890,8 +894,9 @@
                             combinedPatients = combinedPatients.concat(group.individualPatients);
                         }
 
+                        const locId = `grouped_loc_${group.lat.toFixed(6).replace(/\./g, '_').replace(/-/g, '_')}_${group.lng.toFixed(6).replace(/\./g, '_').replace(/-/g, '_')}`;
                         processedData.push({
-                            id: `grouped_loc_${index}`,
+                            id: locId,
                             name: combinedName,
                             name_kana: combinedKana,
                             lat: group.lat,
@@ -927,9 +932,16 @@
                     for (const key in parsed) {
                         activeVisitTimers[key] = {
                             arrivalTime: new Date(parsed[key].arrivalTime),
-                            name: parsed[key].name
+                            name: parsed[key].name,
+                            manualVisitIds: parsed[key].manualVisitIds || []
                         };
                     }
+                    // Restore isInside flag in FACILITIES_DATA for active timers
+                    FACILITIES_DATA.forEach(f => {
+                        if (activeVisitTimers[f.id]) {
+                            f.isInside = true;
+                        }
+                    });
                 } catch(e) { console.error('Timer parse error:', e); }
             }
 
@@ -1236,16 +1248,18 @@
                 });
             });
 
-            // 「拒否」が選ばれた時のみ理由入力欄を表示
+            // 「拒否」または「未実施」が選ばれた時のみ理由入力欄を表示
             document.querySelectorAll('input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', (e) => {
                     const group = e.target.closest('.radio-group');
-                    const reasonInput = group.nextElementSibling;
-                    if (e.target.value === '拒否') {
-                        reasonInput.style.display = 'block';
-                    } else {
-                        reasonInput.style.display = 'none';
-                        reasonInput.value = ''; // 内容をリセット
+                    const reasonInput = group ? group.nextElementSibling : null;
+                    if (reasonInput && reasonInput.type !== 'hidden') {
+                        if (e.target.value === '拒否' || e.target.value === '未実施') {
+                            reasonInput.style.display = 'block';
+                        } else {
+                            reasonInput.style.display = 'none';
+                            reasonInput.value = ''; // 内容をリセット
+                        }
                     }
                 });
             });
@@ -1394,7 +1408,24 @@
             const patientListContainer = document.querySelector('.patient-list');
             patientListContainer.innerHTML = '';
             
+            const isSoyokaze = facility.name && facility.name.includes('そよ風');
             facility.patients.forEach(p => {
+                const walkSectionHTML = isSoyokaze ? `
+                        <div style="font-weight: 600; font-size: 0.9rem;">🚶‍♂️ 歩行訓練の実施</div>
+                        <div class="radio-group" data-id="${p.id}">
+                            <label><input type="radio" name="walk-${p.id}" value="屋内"> 屋内</label>
+                            <label><input type="radio" name="walk-${p.id}" value="屋外"> 屋外</label>
+                            <label><input type="radio" name="walk-${p.id}" value="拒否"> 拒否</label>
+                            <label><input type="radio" name="walk-${p.id}" value="未実施" checked> 未実施</label>
+                        </div>
+                        <input type="text" class="reason-input" id="reason-${p.id}" style="display: block;" placeholder="未実施・拒否の理由や備考を入力...">
+                ` : `
+                        <div class="radio-group" data-id="${p.id}" style="display: none;">
+                            <input type="radio" name="walk-${p.id}" value="未実施" checked>
+                        </div>
+                        <input type="hidden" id="reason-${p.id}" value="">
+                `;
+
                 const itemHTML = `
                 <div class="patient-item">
                     <label class="patient-header">
@@ -1405,14 +1436,7 @@
                         </div>
                     </label>
                     <div class="patient-options">
-                        <div style="font-weight: 600; font-size: 0.9rem;">🚶‍♂️ 歩行訓練の実施</div>
-                        <div class="radio-group" data-id="${p.id}">
-                            <label><input type="radio" name="walk-${p.id}" value="屋内"> 屋内</label>
-                            <label><input type="radio" name="walk-${p.id}" value="屋外"> 屋外</label>
-                            <label><input type="radio" name="walk-${p.id}" value="拒否"> 拒否</label>
-                            <label><input type="radio" name="walk-${p.id}" value="未実施" checked> 未実施</label>
-                        </div>
-                        <input type="text" class="reason-input" id="reason-${p.id}" placeholder="拒否の理由や備考を入力...">
+                        ${walkSectionHTML}
                         
                         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
                             <div style="font-weight: 600; font-size: 0.9rem;">📝 訪問メモ・詳細</div>
@@ -1458,6 +1482,25 @@
 
         btnSavePatients.addEventListener('click', async () => {
             const checkboxes = document.querySelectorAll('.patient-checkbox:checked');
+            
+            // バリデーション
+            let validationFailed = false;
+            const isSoyokaze = currentFacilityName && currentFacilityName.includes('そよ風');
+            if (isSoyokaze) {
+                checkboxes.forEach(cb => {
+                    const name = cb.value;
+                    const id = cb.dataset.id;
+                    const walkRadio = document.querySelector(`input[name="walk-${id}"]:checked`);
+                    const walkStatus = walkRadio ? walkRadio.value : '未実施';
+                    const reason = document.getElementById(`reason-${id}`).value.trim();
+                    if ((walkStatus === '拒否' || walkStatus === '未実施') && !reason) {
+                        alert(`${name} 様の歩行訓練が実施できなかった理由を入力してください。`);
+                        validationFailed = true;
+                    }
+                });
+            }
+            if (validationFailed) return;
+
             let logMessages = [];
             let visitsData = [];
             
@@ -1542,13 +1585,26 @@
                 const id = cb.dataset.id;
                 
                 // 歩行訓練
-                const walkStatus = document.querySelector(`input[name="walk-${id}"]:checked`).value;
+                const walkRadio = document.querySelector(`input[name="walk-${id}"]:checked`);
+                const walkStatus = walkRadio ? walkRadio.value : '未実施';
+                const reason = document.getElementById(`reason-${id}`).value.trim();
                 
                 // メモ
                 const notes = document.getElementById(`notes-${id}`).value;
                 
                 // 写真
                 const photos = sessionPhotos[id] || [];
+
+                let finalNotes = notes;
+                if (isSoyokaze) {
+                    let walkText = '';
+                    if (walkStatus === '屋内' || walkStatus === '屋外') {
+                        walkText = `【歩行訓練】実施: ${walkStatus}`;
+                    } else {
+                        walkText = `【歩行訓練】未実施 (理由: ${walkStatus}${reason ? ' - ' + reason : ''})`;
+                    }
+                    finalNotes = walkText + (notes ? '\n' + notes : '');
+                }
 
                 logMessages.push(`${name} (メモあり/写真 ${photos.length}点)`);
                 
@@ -1558,7 +1614,7 @@
                     location: `${currentFacilityName} (${name} 様)`,
                     duration: stayDuration,
                     category: visitCategory,
-                    notes: notes,
+                    notes: finalNotes,
                     images: photos
                 });
             });
@@ -1585,8 +1641,8 @@
                     if(result.success) {
                         addLog(`🏥 ${currentFacilityName}の記録をサーバーへ保存しました！<br>・${logMessages.join('<br>・')}`, "success");
                         
-                        // 【新機能】手動で保存した記録のIDを保持しておき、退出時に時間を更新できるようにする
-                        if (timerInfo && result.ids) {
+                        // ただし、ユーザーが具体的な滞在時間（自動以外）を手動入力した場合は上書きしないため追跡しない
+                        if (timerInfo && result.ids && manualDuration === '自動') {
                             if (!timerInfo.manualVisitIds) timerInfo.manualVisitIds = [];
                             timerInfo.manualVisitIds = timerInfo.manualVisitIds.concat(result.ids);
                             addLog(`⏱️ 滞在時間は退出時にGPSで自動確定されます。`, "info");
@@ -1819,17 +1875,21 @@
 
             // 【新機能】もし既に手動で保存された記録があるなら、その時間を更新する
             if (timerInfo.manualVisitIds && timerInfo.manualVisitIds.length > 0) {
-                addLog(`⏱️ [後追い更新] ${timerInfo.name} の滞在時間(${stayDuration})を確定させています...`, "info");
+                const count = timerInfo.manualVisitIds.length;
+                // 各訪問の滞在時間をトータルから按分（平均化）して登録し、合計時間が極端に増大するのを防ぐ
+                const avgMin = Math.round(stayMin / count);
+                const avgDuration = `${avgMin}分`;
+                addLog(`⏱️ [後追い更新] ${timerInfo.name} の滞在時間(全体で ${stayDuration}、各名 ${avgDuration})を確定させています...`, "info");
                 try {
                     await fetch(`${API_BASE}/api/visits/batch-update-duration`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             visitIds: timerInfo.manualVisitIds,
-                            duration: stayDuration
+                            duration: avgDuration
                         })
                     });
-                    addLog(`✅ [確定完了] ${timerInfo.name} の滞在記録を${stayDuration}に更新しました。`, "success");
+                    addLog(`✅ [確定完了] ${timerInfo.name} の滞在記録を ${avgDuration} に更新しました。`, "success");
                     return; // 既存記録を更新した場合は、新規の自動ログは作らない
                 } catch (e) {
                     console.error('UpdateDuration Error:', e);
@@ -1915,68 +1975,138 @@
         const historyModal = document.getElementById('history-modal');
         const btnCloseHistory = document.getElementById('btn-close-history');
         const historyListContainer = document.getElementById('history-list-container');
+        
+        let activeHistoryFilter = 'mine'; // 'mine' or 'all'
 
-        if (btnViewHistory) {
-            btnViewHistory.addEventListener('click', async () => {
-                const now = new Date();
-                const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        async function loadDailyHistory() {
+            const now = new Date();
+            const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+            
+            historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px;">読み込み中...</div>';
+            
+            let staffQuery = '';
+            if (activeHistoryFilter === 'mine' && currentStaff) {
+                staffQuery = `&staffName=${encodeURIComponent(currentStaff.name.trim())}`;
+            }
+
+            try {
+                const res = await fetch(`${API_BASE}/api/visits?date=${dateStr}${staffQuery}`);
+                const result = await res.json();
                 
-                historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px;">読み込み中...</div>';
-                historyModal.style.display = 'flex';
-
-                // 現在選択されているスタッフの名前をURLエンコードして付与
-                const staffQuery = currentStaff ? `&staffName=${encodeURIComponent(currentStaff.name.trim())}` : '';
-
-                try {
-                    const res = await fetch(`${API_BASE}/api/visits?date=${dateStr}${staffQuery}`);
-                    const result = await res.json();
-                    
-                    historyListContainer.innerHTML = '';
-                    
-                    if (result.success && result.data.length > 0) {
-                        result.data.forEach(v => {
-                            const item = document.createElement('div');
-                            item.style.cssText = 'background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: relative;';
-                            item.innerHTML = `
-                                <div style="font-size: 0.85rem; color: var(--text-muted);">${v.time_range} - ${v.staff_name}</div>
-                                <div style="font-weight: 600; font-size: 1.05rem; margin-top: 4px;">${v.location}</div>
-                                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">滞在: ${v.duration} / ${v.category}</div>
-                                <button class="btn-delete-visit" data-id="${v.id}" style="position: absolute; right: 12px; top: 12px; background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid var(--danger); border-radius: 4px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer;">削除</button>
-                            `;
-                            historyListContainer.appendChild(item);
-                        });
+                historyListContainer.innerHTML = '';
+                
+                if (result.success && result.data.length > 0) {
+                    result.data.forEach(v => {
+                        const item = document.createElement('div');
+                        item.style.cssText = 'background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 12px; position: relative; display: flex; flex-direction: column; gap: 4px;';
                         
-                        document.querySelectorAll('.btn-delete-visit').forEach(btn => {
-                            btn.addEventListener('click', async (e) => {
-                                if (confirm('この訪問記録を削除しますか？')) {
-                                    const id = e.target.dataset.id;
-                                    e.target.innerText = '削除中...';
-                                    e.target.disabled = true;
-                                    try {
-                                        const delRes = await fetch(`${API_BASE}/api/staff/visits/${id}`, { method: 'DELETE' });
-                                        const delResult = await delRes.json();
-                                        if (delResult.success) {
-                                            e.target.closest('div').remove();
-                                            addLog('訪問記録を削除しました。', 'success');
-                                        } else {
-                                            alert('削除に失敗しました: ' + delResult.message);
-                                            e.target.innerText = '削除';
-                                            e.target.disabled = false;
-                                        }
-                                    } catch (err) {
-                                        alert('通信エラーが発生しました。');
+                        // Parse walking training
+                        let walkBadgeHtml = '';
+                        let displayNotes = v.notes || '';
+                        if (v.notes && v.notes.includes('【歩行訓練】')) {
+                            const match = v.notes.match(/【歩行訓練】([^\n]+)/);
+                            if (match) {
+                                const walkInfo = match[1];
+                                const isImplemented = walkInfo.includes('実施:') && !walkInfo.includes('未実施');
+                                const badgeStyle = isImplemented 
+                                    ? 'background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);' 
+                                    : 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);';
+                                
+                                const cleanInfo = walkInfo.replace('実施: ', '').replace('未実施 (理由: ', '未実施 - 理由: ').replace(')', '');
+                                walkBadgeHtml = `
+                                    <div style="padding: 4px 8px; border-radius: 6px; font-size: 0.75rem; display: inline-flex; align-items: center; gap: 4px; font-weight: 600; width: fit-content; margin-top: 4px; ${badgeStyle}">
+                                        🚶‍♂️ 歩行訓練: ${cleanInfo}
+                                    </div>
+                                `;
+                                displayNotes = v.notes.replace(/【歩行訓練】[^\n]+\n?/, '').trim();
+                            }
+                        }
+
+                        // Display notes block
+                        const notesHtml = displayNotes 
+                            ? `<div style="margin-top: 6px; padding: 8px 10px; background: rgba(0,0,0,0.2); border-left: 3px solid var(--primary); font-size: 0.8rem; border-radius: 4px; white-space: pre-wrap; color: rgba(255,255,255,0.95);">${displayNotes}</div>` 
+                            : '';
+
+                        item.innerHTML = `
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">${v.time_range} - ${v.staff_name}</div>
+                            <div style="font-weight: 600; font-size: 1.05rem; color: #fff;">${v.location}</div>
+                            <div style="font-size: 0.8rem; color: var(--text-muted);">滞在: ${v.duration} / ${v.category}</div>
+                            ${walkBadgeHtml}
+                            ${notesHtml}
+                            <button class="btn-delete-visit" data-id="${v.id}" style="position: absolute; right: 12px; top: 12px; background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid var(--danger); border-radius: 4px; padding: 6px 12px; font-size: 0.8rem; cursor: pointer;">削除</button>
+                        `;
+                        historyListContainer.appendChild(item);
+                    });
+                    
+                    document.querySelectorAll('.btn-delete-visit').forEach(btn => {
+                        btn.addEventListener('click', async (e) => {
+                            if (confirm('この訪問記録を削除しますか？')) {
+                                const id = e.target.dataset.id;
+                                e.target.innerText = '削除中...';
+                                e.target.disabled = true;
+                                try {
+                                    const delRes = await fetch(`${API_BASE}/api/staff/visits/${id}`, { method: 'DELETE' });
+                                    const delResult = await delRes.json();
+                                    if (delResult.success) {
+                                        e.target.closest('div').remove();
+                                        addLog('訪問記録を削除しました。', 'success');
+                                    } else {
+                                        alert('削除に失敗しました: ' + delResult.message);
                                         e.target.innerText = '削除';
                                         e.target.disabled = false;
                                     }
+                                } catch (err) {
+                                    alert('通信エラーが発生しました。');
+                                    e.target.innerText = '削除';
+                                    e.target.disabled = false;
                                 }
-                            });
+                            }
                         });
-                    } else {
-                        historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">本日の訪問記録はありません。</div>';
-                    }
-                } catch (e) {
-                    historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger);">取得に失敗しました。</div>';
+                    });
+                } else {
+                    historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">本日の訪問記録はありません。</div>';
                 }
+            } catch (e) {
+                historyListContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger);">取得に失敗しました。</div>';
+            }
+        }
+
+        const btnFilterMine = document.getElementById('btn-history-filter-mine');
+        const btnFilterAll = document.getElementById('btn-history-filter-all');
+
+        if (btnFilterMine) {
+            btnFilterMine.addEventListener('click', () => {
+                activeHistoryFilter = 'mine';
+                btnFilterMine.style.background = 'var(--primary)';
+                btnFilterMine.style.color = 'white';
+                btnFilterAll.style.background = '#334155';
+                btnFilterAll.style.color = 'var(--text-muted)';
+                loadDailyHistory();
+            });
+        }
+
+        if (btnFilterAll) {
+            btnFilterAll.addEventListener('click', () => {
+                activeHistoryFilter = 'all';
+                btnFilterAll.style.background = 'var(--primary)';
+                btnFilterAll.style.color = 'white';
+                btnFilterMine.style.background = '#334155';
+                btnFilterMine.style.color = 'var(--text-muted)';
+                loadDailyHistory();
+            });
+        }
+
+        if (btnViewHistory) {
+            btnViewHistory.addEventListener('click', () => {
+                activeHistoryFilter = 'mine';
+                if (btnFilterMine && btnFilterAll) {
+                    btnFilterMine.style.background = 'var(--primary)';
+                    btnFilterMine.style.color = 'white';
+                    btnFilterAll.style.background = '#334155';
+                    btnFilterAll.style.color = 'var(--text-muted)';
+                }
+                historyModal.style.display = 'flex';
+                loadDailyHistory();
             });
         }
 
