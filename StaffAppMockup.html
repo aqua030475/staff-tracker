@@ -495,6 +495,9 @@
                         👤 新規患者追加
                     </button>
                 </div>
+                <button id="btn-walk-search-open" class="btn" style="background-color: #a855f7; color: white; box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3); font-size: 0.95rem; padding: 12px;">
+                    🏃‍♂️ 歩行訓練の検索
+                </button>
             </div>
 
             <div id="permission-alert">
@@ -641,6 +644,22 @@
         <button id="btn-close-add-patient" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 16px; box-shadow: none;">キャンセル</button>
     </div>
 
+    <!-- 歩行訓練検索モーダル -->
+    <div id="walk-search-modal" style="position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: var(--bg-body); color: var(--text-main); z-index: 3000; display: none; flex-direction: column; padding: 40px 20px; overflow-y: auto; text-align: left;">
+        <h2 style="margin-bottom: 8px; text-align: center;">🏃‍♂️ 歩行訓練記録の検索</h2>
+        <p style="color: var(--text-muted); margin-bottom: 24px; text-align: center;">患者名で歩行訓練の履歴を検索します</p>
+        
+        <div style="display: flex; gap: 8px; margin-bottom: 16px;">
+            <input type="text" id="walk-search-input" style="flex: 1; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #1e293b; color: white; font-size: 1rem;" placeholder="患者名を入力 (例: 小林)">
+            <button id="btn-walk-search-run" class="btn" style="width: auto; background: var(--primary); padding: 12px 24px; font-size: 1rem; font-weight: bold; border-radius: 8px;">検索</button>
+        </div>
+        
+        <div id="walk-search-results-container" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;">
+            <div style="text-align: center; padding: 20px; color: var(--text-muted);">患者名を入力して検索してください。</div>
+        </div>
+        
+        <button id="btn-close-walk-search" class="btn" style="background: transparent; color: var(--text-muted); margin-top: 24px; box-shadow: none;">閉じる</button>
+    </div>
 
     <script>
         const btnStart = document.getElementById('btn-start');
@@ -1065,6 +1084,75 @@
 
         // トラッキング停止ボタン
         btnStop.addEventListener('click', async () => {
+            // 歩行訓練の入力チェック (そよ風限定)
+            if (currentStaff) {
+                try {
+                    const now = new Date();
+                    const dateStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+                    
+                    // 本日のこのスタッフの訪問履歴を取得
+                    const res = await fetch(`${API_BASE}/api/visits?date=${dateStr}&staffName=${encodeURIComponent(currentStaff.name.trim())}`);
+                    const result = await res.json();
+                    
+                    if (result.success && result.data.length > 0) {
+                        // そよ風に該当する訪問を探す
+                        const soyokazeVisits = result.data.filter(v => v.location && v.location.includes('そよ風'));
+                        
+                        if (soyokazeVisits.length > 0) {
+                            const treatmentOnlyPatients = JSON.parse(localStorage.getItem('treatment_only_patients') || '[]');
+                            const missingWalkPatients = [];
+                            
+                            soyokazeVisits.forEach(v => {
+                                // location から患者名を取り出す。例: "そよ風 (小林 良子 様)" もしくは "そよ風 (小林 良子)"
+                                const match = v.location.match(/そよ風\s*[\(（](.+?)[）\)]/);
+                                if (match) {
+                                    const patientName = match[1].replace(' 様', '').replace('　', ' ').trim();
+                                    
+                                    // FACILITIES_DATA からこの患者を探して ID を特定する
+                                    let patientId = null;
+                                    FACILITIES_DATA.forEach(fac => {
+                                        if (fac.name && fac.name.includes('そよ風') && fac.patients) {
+                                            const found = fac.patients.find(p => {
+                                                const pName = p.name.replace(' 様', '').replace('　', ' ').trim();
+                                                return pName === patientName;
+                                            });
+                                            if (found) {
+                                                patientId = found.id;
+                                            }
+                                        }
+                                    });
+                                    
+                                    // 治療のみ(歩行訓練なし)にチェックされている場合はスキップ
+                                    if (patientId && treatmentOnlyPatients.includes(patientId)) {
+                                        return; // この患者はスキップ
+                                    }
+                                    
+                                    // notes に 【歩行訓練】 が含まれていない場合 → 未記載
+                                    // ※ patientIdが見つからなくても、notesチェックは実行する（安全側に倒す）
+                                    if (!v.notes || !v.notes.includes('【歩行訓練】')) {
+                                        missingWalkPatients.push(`${patientName} 様`);
+                                    }
+                                }
+                            });
+                            
+                            if (missingWalkPatients.length > 0) {
+                                const uniqueMissing = [...new Set(missingWalkPatients)];
+                                alert(
+                                    `⚠️ トラッキング終了不可\n\n` +
+                                    `本日の「そよ風」の訪問で、以下の患者様の歩行訓練の有無が記載されていません：\n\n` +
+                                    uniqueMissing.map(n => `❌ ${n}`).join('\n') +
+                                    `\n\n📋 歩行訓練の有無を記録してから、再度トラッキング終了を押してください。\n` +
+                                    `（「📅 本日の履歴・修正」から修正できます）`
+                                );
+                                return; // 停止処理を完全にブロック
+                            }
+                        }
+                    }
+                } catch (e) {
+                    console.error('Check walking training logs error:', e);
+                }
+            }
+
             if (watchId !== null) {
                 navigator.geolocation.clearWatch(watchId);
                 watchId = null;
@@ -1248,6 +1336,30 @@
                 });
             });
 
+            // 「治療のみ」チェックボックス変更イベント
+            document.querySelectorAll('.treatment-only-checkbox').forEach(chk => {
+                chk.addEventListener('change', (e) => {
+                    const id = e.target.dataset.id;
+                    const isChecked = e.target.checked;
+                    const wrapper = document.getElementById(`walk-wrapper-${id}`);
+                    
+                    if (wrapper) {
+                        wrapper.style.display = isChecked ? 'none' : 'block';
+                    }
+                    
+                    // LocalStorageに保存
+                    let treatmentOnlyPatients = JSON.parse(localStorage.getItem('treatment_only_patients') || '[]');
+                    if (isChecked) {
+                        if (!treatmentOnlyPatients.includes(id)) {
+                            treatmentOnlyPatients.push(id);
+                        }
+                    } else {
+                        treatmentOnlyPatients = treatmentOnlyPatients.filter(pid => pid !== id);
+                    }
+                    localStorage.setItem('treatment_only_patients', JSON.stringify(treatmentOnlyPatients));
+                });
+            });
+
             // 「拒否」または「未実施」が選ばれた時のみ理由入力欄を表示
             document.querySelectorAll('input[type="radio"]').forEach(radio => {
                 radio.addEventListener('change', (e) => {
@@ -1409,16 +1521,26 @@
             patientListContainer.innerHTML = '';
             
             const isSoyokaze = facility.name && facility.name.includes('そよ風');
+            const treatmentOnlyPatients = JSON.parse(localStorage.getItem('treatment_only_patients') || '[]');
+            
             facility.patients.forEach(p => {
+                const isTreatmentOnly = treatmentOnlyPatients.includes(p.id);
+                
                 const walkSectionHTML = isSoyokaze ? `
-                        <div style="font-weight: 600; font-size: 0.9rem;">🚶‍♂️ 歩行訓練の実施</div>
-                        <div class="radio-group" data-id="${p.id}">
-                            <label><input type="radio" name="walk-${p.id}" value="屋内"> 屋内</label>
-                            <label><input type="radio" name="walk-${p.id}" value="屋外"> 屋外</label>
-                            <label><input type="radio" name="walk-${p.id}" value="拒否"> 拒否</label>
-                            <label><input type="radio" name="walk-${p.id}" value="未実施" checked> 未実施</label>
+                        <label style="font-size: 0.85rem; color: var(--text-muted); display: inline-flex; align-items: center; gap: 6px; margin-bottom: 12px; cursor: pointer; user-select: none;">
+                            <input type="checkbox" class="treatment-only-checkbox" data-id="${p.id}" ${isTreatmentOnly ? 'checked' : ''} style="width: 16px; height: 16px;">
+                            <span>治療のみ (歩行訓練なし)</span>
+                        </label>
+                        <div class="walk-options-wrapper" id="walk-wrapper-${p.id}" style="${isTreatmentOnly ? 'display: none;' : 'display: block;'}">
+                            <div style="font-weight: 600; font-size: 0.9rem;">🚶‍♂️ 歩行訓練の実施</div>
+                            <div class="radio-group" data-id="${p.id}">
+                                <label><input type="radio" name="walk-${p.id}" value="屋内"> 屋内</label>
+                                <label><input type="radio" name="walk-${p.id}" value="屋外"> 屋外</label>
+                                <label><input type="radio" name="walk-${p.id}" value="拒否"> 拒否</label>
+                                <label><input type="radio" name="walk-${p.id}" value="未実施" checked> 未実施</label>
+                            </div>
+                            <input type="text" class="reason-input" id="reason-${p.id}" style="display: block;" placeholder="未実施・拒否の理由や備考を入力...">
                         </div>
-                        <input type="text" class="reason-input" id="reason-${p.id}" style="display: block;" placeholder="未実施・拒否の理由や備考を入力...">
                 ` : `
                         <div class="radio-group" data-id="${p.id}" style="display: none;">
                             <input type="radio" name="walk-${p.id}" value="未実施" checked>
@@ -1490,6 +1612,9 @@
                 checkboxes.forEach(cb => {
                     const name = cb.value;
                     const id = cb.dataset.id;
+                    const isTreatmentOnly = document.querySelector(`.treatment-only-checkbox[data-id="${id}"]`)?.checked;
+                    if (isTreatmentOnly) return; // 治療のみ（歩行訓練なし）の場合はバリデーションをスキップ
+                    
                     const walkRadio = document.querySelector(`input[name="walk-${id}"]:checked`);
                     const walkStatus = walkRadio ? walkRadio.value : '未実施';
                     const reason = document.getElementById(`reason-${id}`).value.trim();
@@ -1597,13 +1722,18 @@
 
                 let finalNotes = notes;
                 if (isSoyokaze) {
-                    let walkText = '';
-                    if (walkStatus === '屋内' || walkStatus === '屋外') {
-                        walkText = `【歩行訓練】実施: ${walkStatus}`;
+                    const isTreatmentOnly = document.querySelector(`.treatment-only-checkbox[data-id="${id}"]`)?.checked;
+                    if (isTreatmentOnly) {
+                        finalNotes = `【歩行訓練】対象外 (治療のみ)` + (notes ? '\n' + notes : '');
                     } else {
-                        walkText = `【歩行訓練】未実施 (理由: ${walkStatus}${reason ? ' - ' + reason : ''})`;
+                        let walkText = '';
+                        if (walkStatus === '屋内' || walkStatus === '屋外') {
+                            walkText = `【歩行訓練】実施: ${walkStatus}`;
+                        } else {
+                            walkText = `【歩行訓練】未実施 (理由: ${walkStatus}${reason ? ' - ' + reason : ''})`;
+                        }
+                        finalNotes = walkText + (notes ? '\n' + notes : '');
                     }
-                    finalNotes = walkText + (notes ? '\n' + notes : '');
                 }
 
                 logMessages.push(`${name} (メモあり/写真 ${photos.length}点)`);
@@ -2008,9 +2138,15 @@
                             if (match) {
                                 const walkInfo = match[1];
                                 const isImplemented = walkInfo.includes('実施:') && !walkInfo.includes('未実施');
-                                const badgeStyle = isImplemented 
-                                    ? 'background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);' 
-                                    : 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);';
+                                const isExcluded = walkInfo.includes('対象外');
+                                let badgeStyle = '';
+                                if (isExcluded) {
+                                    badgeStyle = 'background: rgba(96, 165, 250, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3);';
+                                } else if (isImplemented) {
+                                    badgeStyle = 'background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);';
+                                } else {
+                                    badgeStyle = 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);';
+                                }
                                 
                                 const cleanInfo = walkInfo.replace('実施: ', '').replace('未実施 (理由: ', '未実施 - 理由: ').replace(')', '');
                                 walkBadgeHtml = `
@@ -2201,6 +2337,122 @@
                 } finally {
                     btnSaveNewPatient.innerText = originalText;
                     btnSaveNewPatient.disabled = false;
+                }
+            });
+        }
+
+        // ==================================
+        // 歩行訓練検索処理
+        // ==================================
+        const btnWalkSearchOpen = document.getElementById('btn-walk-search-open');
+        const walkSearchModal = document.getElementById('walk-search-modal');
+        const btnCloseWalkSearch = document.getElementById('btn-close-walk-search');
+        const btnWalkSearchRun = document.getElementById('btn-walk-search-run');
+        const walkSearchInput = document.getElementById('walk-search-input');
+        const walkSearchResultsContainer = document.getElementById('walk-search-results-container');
+
+        if (btnWalkSearchOpen) {
+            btnWalkSearchOpen.addEventListener('click', () => {
+                walkSearchModal.style.display = 'flex';
+                walkSearchInput.value = '';
+                walkSearchResultsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">患者名を入力して検索してください。</div>';
+            });
+        }
+
+        if (btnCloseWalkSearch) {
+            btnCloseWalkSearch.addEventListener('click', () => {
+                walkSearchModal.style.display = 'none';
+            });
+        }
+
+        async function performWalkSearch() {
+            const queryName = walkSearchInput.value.trim();
+            if (!queryName) {
+                alert('検索する患者名を入力してください。');
+                return;
+            }
+
+            walkSearchResultsContainer.innerHTML = '<div style="text-align: center; padding: 20px;">検索中...</div>';
+
+            try {
+                const res = await fetch(`${API_BASE}/api/walk-training/search?name=${encodeURIComponent(queryName)}`);
+                const result = await res.json();
+
+                walkSearchResultsContainer.innerHTML = '';
+
+                if (result.success && result.data.length > 0) {
+                    result.data.forEach(v => {
+                        const item = document.createElement('div');
+                        item.style.cssText = 'background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px;';
+
+                        // 歩行訓練情報の抽出とパース
+                        let walkBadgeHtml = '';
+                        let displayNotes = v.notes || '';
+                        let walkStatusText = '未入力';
+                        let badgeStyle = 'background: rgba(255, 255, 255, 0.1); color: var(--text-muted); border: 1px solid rgba(255, 255, 255, 0.2);';
+
+                        if (v.notes && v.notes.includes('【歩行訓練】')) {
+                            const match = v.notes.match(/【歩行訓練】([^\n]+)/);
+                            if (match) {
+                                const walkInfo = match[1];
+                                const isImplemented = walkInfo.includes('実施:') && !walkInfo.includes('未実施');
+                                const isExcluded = walkInfo.includes('対象外');
+                                
+                                if (isExcluded) {
+                                    walkStatusText = '対象外 (治療のみ)';
+                                    badgeStyle = 'background: rgba(96, 165, 250, 0.15); color: #60a5fa; border: 1px solid rgba(96, 165, 250, 0.3);';
+                                } else if (isImplemented) {
+                                    walkStatusText = walkInfo.replace('実施: ', '');
+                                    badgeStyle = 'background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3);';
+                                } else {
+                                    walkStatusText = walkInfo.replace('未実施 (理由: ', '未実施 - 理由: ').replace(')', '');
+                                    badgeStyle = 'background: rgba(239, 68, 68, 0.15); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.3);';
+                                }
+                                displayNotes = v.notes.replace(/【歩行訓練】[^\n]+\n?/, '').trim();
+                            }
+                        }
+
+                        walkBadgeHtml = `
+                            <div style="padding: 6px 10px; border-radius: 6px; font-size: 0.8rem; display: inline-flex; align-items: center; gap: 6px; font-weight: 600; width: fit-content; ${badgeStyle}">
+                                🚶‍♂️ 歩行訓練: ${walkStatusText}
+                            </div>
+                        `;
+
+                        const notesHtml = displayNotes 
+                            ? `<div style="padding: 8px 10px; background: rgba(0,0,0,0.2); border-left: 3px solid var(--primary); font-size: 0.85rem; border-radius: 4px; white-space: pre-wrap; color: rgba(255,255,255,0.95);"><div style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">詳細・メモ</div>${displayNotes}</div>` 
+                            : '<div style="font-size: 0.85rem; color: var(--text-muted); font-style: italic">詳細メモなし</div>';
+
+                        // 日時表示 (日時: visit_date と time_range)
+                        const dateTimeStr = `${v.visit_date} ${v.time_range}`;
+
+                        item.innerHTML = `
+                            <div style="display: flex; justify-content: space-between; font-size: 0.8rem; color: var(--text-muted);">
+                                <span>📅 ${dateTimeStr}</span>
+                                <span>担当: ${v.staff_name}</span>
+                            </div>
+                            <div style="font-weight: 600; font-size: 1.05rem; color: #fff; margin-bottom: 4px;">${v.location}</div>
+                            ${walkBadgeHtml}
+                            ${notesHtml}
+                        `;
+                        walkSearchResultsContainer.appendChild(item);
+                    });
+                } else {
+                    walkSearchResultsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--text-muted);">該当する歩行訓練記録が見つかりませんでした。</div>';
+                }
+            } catch (e) {
+                console.error(e);
+                walkSearchResultsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger);">検索中にエラーが発生しました。</div>';
+            }
+        }
+
+        if (btnWalkSearchRun) {
+            btnWalkSearchRun.addEventListener('click', performWalkSearch);
+        }
+
+        if (walkSearchInput) {
+            background_search: walkSearchInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    performWalkSearch();
                 }
             });
         }
