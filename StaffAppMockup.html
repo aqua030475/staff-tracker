@@ -2441,7 +2441,11 @@
                 }
             } catch (e) {
                 console.error(e);
-                walkSearchResultsContainer.innerHTML = '<div style="text-align: center; padding: 20px; color: var(--danger);">検索中にエラーが発生しました。</div>';
+                let errorMsg = '検索中にエラーが発生しました。';
+                if (e.name === 'TypeError' && e.message === 'Failed to fetch') {
+                    errorMsg = 'サーバーに接続できません。ダッシュボード側（server.js）が起動しているか確認してください。';
+                }
+                walkSearchResultsContainer.innerHTML = `<div style="text-align: center; padding: 20px; color: var(--danger);">${errorMsg}</div>`;
             }
         }
 
