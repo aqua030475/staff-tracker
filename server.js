@@ -2,7 +2,9 @@ require('dotenv').config();
 const express = require('express');
 const nodemailer = require('nodemailer');
 const cors = require('cors');
-const { Pool } = require('pg');
+const pg = require('pg');
+const { Pool } = pg;
+pg.types.setTypeParser(pg.types.builtins.TIMESTAMP, str => new Date(str + 'Z'));
 const fs = require('fs');
 const path = require('path');
 
@@ -665,6 +667,63 @@ app.get('/api/visits', async (req, res) => {
         res.status(200).json({ success: true, count: formattedRows.length, data: formattedRows });
     } catch (err) {
         console.error('❌ データベース検索エラー:', err.message);
+        res.status(500).json({ success: false, message: 'データベース検索エラー', error: err.message });
+    }
+});
+
+// 歩行訓練記録の検索API (スタッフ用)
+app.get('/api/walk-training/search', async (req, res) => {
+    const { name } = req.query;
+    if (!name) {
+        return res.status(400).json({ success: false, message: '名前を指定してください。' });
+    }
+
+    try {
+        const searchName = name.replace(/[\s　]/g, "");
+
+        // ひらがなをカタカナに変換
+        const toKatakana = (str) => {
+            return str.replace(/[\u3041-\u3096]/g, function(match) {
+                const chr = match.charCodeAt(0) + 0x60;
+                return String.fromCharCode(chr);
+            });
+        };
+        const kanaName = toKatakana(searchName);
+
+        // 患者テーブルから該当する患者名（漢字）を取得
+        const patientQuery = `
+            SELECT name FROM patients 
+            WHERE REPLACE(REPLACE(name, ' ', ''), '　', '') LIKE $1
+               OR REPLACE(REPLACE(name_kana, ' ', ''), '　', '') LIKE $2
+        `;
+        const patientResult = await pool.query(patientQuery, [`%${searchName}%`, `%${kanaName}%`]);
+        const matchingPatientNames = patientResult.rows.map(row => row.name.replace(/[\s　]/g, ""));
+        const uniquePatientNames = [...new Set(matchingPatientNames)];
+
+        // 動的に検索条件を構築
+        let nameConditions = [`(REPLACE(REPLACE(location, ' ', ''), '　', '') LIKE $1)`];
+        let queryParams = [`%${searchName}%`];
+
+        uniquePatientNames.forEach(pName => {
+            if (!queryParams.includes(`%${pName}%`)) {
+                nameConditions.push(`(REPLACE(REPLACE(location, ' ', ''), '　', '') LIKE $${queryParams.length + 1})`);
+                queryParams.push(`%${pName}%`);
+            }
+        });
+
+        const nameConditionString = `(${nameConditions.join(' OR ')})`;
+
+        // location に患者名が含まれており、かつ「そよ風」の訪問、または「【歩行訓練】」が含まれる記録を最新順に取得
+        const query = `
+            SELECT id, visit_date, time_range, location, notes, staff_name
+            FROM visits
+            WHERE ${nameConditionString} AND (notes LIKE '%【歩行訓練】%' OR location LIKE '%そよ風%')
+            ORDER BY visit_date DESC, created_at DESC
+        `;
+        const result = await pool.query(query, queryParams);
+        res.status(200).json({ success: true, data: result.rows });
+    } catch (err) {
+        console.error('❌ 歩行訓練検索エラー:', err.message);
         res.status(500).json({ success: false, message: 'データベース検索エラー', error: err.message });
     }
 });
