@@ -306,6 +306,50 @@ app.get('/api/stats/monthly', async (req, res) => {
     }
 });
 
+// そよ風歩行訓練の週次集計API
+app.get('/api/stats/soyokaze-weekly', async (req, res) => {
+    const { startDate, endDate } = req.query;
+    if (!startDate || !endDate) return res.status(400).json({ success: false, message: '開始日と終了日を指定してください。' });
+
+    try {
+        const query = `
+            WITH visit_patient_mapping AS (
+                SELECT 
+                    v.id,
+                    v.location,
+                    v.visit_date,
+                    (
+                        SELECT p.name 
+                        FROM patients p 
+                        WHERE 
+                            REPLACE(REPLACE(v.location, ' ', ''), '　', '') LIKE '%(' || REPLACE(REPLACE(p.name, ' ', ''), '　', '') || '様)%' OR
+                            REPLACE(REPLACE(v.location, ' ', ''), '　', '') LIKE '%（' || REPLACE(REPLACE(p.name, ' ', ''), '　', '') || '様）%' OR
+                            REPLACE(REPLACE(v.location, ' ', ''), '　', '') LIKE REPLACE(REPLACE(p.name, ' ', ''), '　', '') || '様%'
+                        LIMIT 1
+                    ) as matched_name
+                FROM visits v
+                WHERE v.visit_date >= $1 AND v.visit_date <= $2
+                  AND v.location LIKE '%そよ風%'
+            )
+            SELECT 
+                m.matched_name as name, 
+                MAX(p.name_kana) as name_kana,
+                COUNT(DISTINCT m.visit_date) as count,
+                string_agg(DISTINCT m.visit_date, ', ') as visit_dates
+            FROM visit_patient_mapping m
+            LEFT JOIN patients p ON m.matched_name = p.name
+            WHERE m.matched_name IS NOT NULL
+            GROUP BY m.matched_name
+            ORDER BY name_kana ASC NULLS LAST, name ASC
+        `;
+        const result = await pool.query(query, [startDate, endDate]);
+        res.json({ success: true, data: result.rows });
+    } catch (error) {
+        console.error('❌ そよ風週次集計エラー:', error);
+        res.status(500).json({ success: false, message: '集計中にエラーが発生しました。' });
+    }
+});
+
 // AIによるカルテ清書APIエンドポイント
 app.post('/api/format-medical-record', async (req, res) => {
     const { rawMemo, patientName } = req.body;
