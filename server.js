@@ -330,6 +330,8 @@ app.get('/api/stats/soyokaze-weekly', async (req, res) => {
                 FROM visits v
                 WHERE v.visit_date >= $1 AND v.visit_date <= $2
                   AND v.location LIKE '%そよ風%'
+                  AND v.notes LIKE '%【歩行訓練】%'
+                  AND v.notes NOT LIKE '%【歩行訓練】対象外%'
             )
             SELECT 
                 m.matched_name as name, 
@@ -757,11 +759,13 @@ app.get('/api/walk-training/search', async (req, res) => {
 
         const nameConditionString = `(${nameConditions.join(' OR ')})`;
 
-        // location に患者名が含まれており、かつ「そよ風」の訪問、または「【歩行訓練】」が含まれる記録を最新順に取得
+        // location に患者名が含まれており、かつ「【歩行訓練】」が含まれる記録（対象外は除く）を最新順に取得
         const query = `
             SELECT id, visit_date, time_range, location, notes, staff_name
             FROM visits
-            WHERE ${nameConditionString} AND (notes LIKE '%【歩行訓練】%' OR location LIKE '%そよ風%')
+            WHERE ${nameConditionString} 
+              AND notes LIKE '%【歩行訓練】%' 
+              AND notes NOT LIKE '%【歩行訓練】対象外%'
             ORDER BY visit_date DESC, created_at DESC
         `;
         const result = await pool.query(query, queryParams);
