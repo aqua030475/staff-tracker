@@ -634,6 +634,10 @@
                     <!-- JSで施設リスト追加 -->
                 </select>
             </div>
+            <div id="new-patient-address-container">
+                <label style="display: block; margin-bottom: 8px; color: var(--text-muted);">住所 (個人宅の場合は必須)</label>
+                <input type="text" id="new-patient-address" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: white; font-size: 1rem;" placeholder="例: 愛知県名古屋市...">
+            </div>
             <div>
                 <label style="display: block; margin-bottom: 8px; color: var(--text-muted);">部屋番号 (任意)</label>
                 <input type="text" id="new-patient-room" style="width: 100%; padding: 12px; border-radius: 8px; border: 1px solid var(--border); background: #0f172a; color: white; font-size: 1rem;" placeholder="例: 101">
@@ -1137,14 +1141,16 @@
                             
                             if (missingWalkPatients.length > 0) {
                                 const uniqueMissing = [...new Set(missingWalkPatients)];
-                                alert(
-                                    `⚠️ トラッキング終了不可\n\n` +
+                                const proceed = confirm(
+                                    `⚠️ 警告: 歩行訓練の記録漏れ\n\n` +
                                     `本日の「そよ風」の訪問で、以下の患者様の歩行訓練の有無が記載されていません：\n\n` +
                                     uniqueMissing.map(n => `❌ ${n}`).join('\n') +
-                                    `\n\n📋 歩行訓練の有無を記録してから、再度トラッキング終了を押してください。\n` +
-                                    `（「📅 本日の履歴・修正」から修正できます）`
+                                    `\n\nこのままトラッキングを終了してもよろしいですか？\n` +
+                                    `（「キャンセル」を押すと戻って記録を修正できます）`
                                 );
-                                return; // 停止処理を完全にブロック
+                                if (!proceed) {
+                                    return; // 停止処理をブロック
+                                }
                             }
                         }
                     }
@@ -1201,13 +1207,15 @@
                 li.innerHTML = `<div style="color: var(--primary); font-weight: 600;">稼働記録</div><div>${sessionText}</div>`;
                 document.getElementById('session-history-list').prepend(li);
                 
-                // サーバーへ「稼働ログ」として保存
-                await saveWorkLog(sessionStartTime, endTime, diffMin);
-                
+                // localStorage のクリアをサーバー通信前に行う（通信中にタブを閉じられても翌日不具合が出ないようにする）
+                const tempStartTime = sessionStartTime;
                 sessionStartTime = null;
                 localStorage.removeItem('tracker_sessionStartTime');
                 localStorage.removeItem('tracker_activeVisitTimers');
                 activeVisitTimers = {};
+
+                // サーバーへ「稼働ログ」として保存
+                await saveWorkLog(tempStartTime, endTime, diffMin);
             }
 
             addLog("トラッキングを停止しました。", "success");
@@ -2260,6 +2268,17 @@
         const btnCloseAddPatient = document.getElementById('btn-close-add-patient');
         const btnSaveNewPatient = document.getElementById('btn-save-new-patient');
         const selectFacility = document.getElementById('new-patient-facility');
+        const addressContainer = document.getElementById('new-patient-address-container');
+
+        if (selectFacility) {
+            selectFacility.addEventListener('change', (e) => {
+                if (e.target.value === 'home') {
+                    addressContainer.style.display = 'block';
+                } else {
+                    addressContainer.style.display = 'none';
+                }
+            });
+        }
 
         if (btnAddPatient) {
             btnAddPatient.addEventListener('click', () => {
@@ -2295,10 +2314,16 @@
                 const name = document.getElementById('new-patient-name').value.trim();
                 const name_kana = document.getElementById('new-patient-kana').value.trim();
                 const facility_id = document.getElementById('new-patient-facility').value;
+                const address = document.getElementById('new-patient-address').value.trim();
                 const room = document.getElementById('new-patient-room').value.trim();
 
                 if (!name) {
                     alert('患者名を入力してください。');
+                    return;
+                }
+
+                if (facility_id === 'home' && !address) {
+                    alert('個人宅の場合は住所を入力してください。');
                     return;
                 }
 
@@ -2313,7 +2338,7 @@
                     const res = await fetch(`${API_BASE}/api/staff/patients`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ id: newId, facility_id, name, name_kana, room })
+                        body: JSON.stringify({ id: newId, facility_id, name, name_kana, room, address })
                     });
                     const result = await res.json();
                     
@@ -2324,6 +2349,7 @@
                         // 入力欄リセット
                         document.getElementById('new-patient-name').value = '';
                         document.getElementById('new-patient-kana').value = '';
+                        document.getElementById('new-patient-address').value = '';
                         document.getElementById('new-patient-room').value = '';
 
                         // 施設データの再読み込みを行い、手動検知リスト等に反映
